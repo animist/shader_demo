@@ -8,74 +8,86 @@
 <script type="module">
 import { mount, paramPanel, PRECISION, Program, Mesh, Geometry, Vec2, hexToRGBArr } from '../engine.js';
 
-// JS で再帰分岐ツリーを生成 → WebGL の線(GL_LINES)を加算合成で描画。
-// 加算合成により「中心が密で明るく、外周がほつれて暗い」濃淡が自然に出る。
-function makeTree(gl){
-  const pos = [], dist = [];
-  const MAX = 26000;
-  function branch(x, y, ang, len, depth, maxDepth){
-    if(pos.length/2 > MAX || depth > maxDepth || len < 0.004) return;
-    const nx = x + Math.cos(ang)*len, ny = y + Math.sin(ang)*len;
-    const d0 = depth/maxDepth, d1 = Math.min(1, (depth+1)/maxDepth);
-    pos.push(x, y, nx, ny); dist.push(d0, d1);
-    const n = 2 + (Math.random() < 0.35 ? 1 : 0);
-    for(let i=0;i<n;i++){
-      const na = ang + (Math.random()-0.5)*1.1 + (i-0.5)*0.2;
-      branch(nx, ny, na, len*(0.68 + Math.random()*0.14), depth+1, maxDepth);
-    }
+// JS で再帰分岐ツリーを生成。各セグメントを quad(2三角形) で描き、太さを可変に。
+// 加算合成で「中心が密で明るく、外周がほつれて暗い」濃淡が自然に出る。
+function makeTree(gl, maxDepth){
+  const pos=[], dir=[], side=[], taper=[], dist=[];
+  const MAX = 20000; let count = 0;
+  function emitSeg(x0,y0,x1,y1,d0,d1){
+    let dx=x1-x0, dy=y1-y0; const len=Math.hypot(dx,dy)||1e-5; dx/=len; dy/=len;
+    const t0=1.0-0.85*d0, t1=1.0-0.85*d1;            // 根元ほど太く、先端で細る
+    const V=[ [x0,y0,dx,dy,+1,t0,d0],[x0,y0,dx,dy,-1,t0,d0],[x1,y1,dx,dy,+1,t1,d1],
+              [x1,y1,dx,dy,+1,t1,d1],[x0,y0,dx,dy,-1,t0,d0],[x1,y1,dx,dy,-1,t1,d1] ];
+    for(const v of V){ pos.push(v[0],v[1]); dir.push(v[2],v[3]); side.push(v[4]); taper.push(v[5]); dist.push(v[6]); }
   }
-  const roots = 16, maxDepth = 9;
-  for(let i=0;i<roots;i++){ const a = (i/roots)*6.2831 + Math.random()*0.4; branch(0, 0, a, 0.16 + Math.random()*0.04, 0, maxDepth); }
-  return new Geometry(gl, { position:{ size:2, data:new Float32Array(pos) }, aDist:{ size:1, data:new Float32Array(dist) } });
+  function branch(x,y,ang,len,depth){
+    if(count>MAX || depth>maxDepth || len<0.004) return;
+    const nx=x+Math.cos(ang)*len, ny=y+Math.sin(ang)*len;
+    const d0=depth/maxDepth, d1=Math.min(1,(depth+1)/maxDepth);
+    emitSeg(x,y,nx,ny,d0,d1); count++;
+    const n=2+(Math.random()<0.35?1:0);
+    for(let i=0;i<n;i++){ const na=ang+(Math.random()-0.5)*1.1+(i-0.5)*0.2; branch(nx,ny,na,len*(0.68+Math.random()*0.14),depth+1); }
+  }
+  const roots=16;
+  for(let i=0;i<roots;i++){ const a=(i/roots)*6.2831+Math.random()*0.4; branch(0,0,a,0.16+Math.random()*0.04,0); }
+  return new Geometry(gl,{
+    position:{size:2,data:new Float32Array(pos)}, aDir:{size:2,data:new Float32Array(dir)},
+    aSide:{size:1,data:new Float32Array(side)}, aTaper:{size:1,data:new Float32Array(taper)},
+    aDist:{size:1,data:new Float32Array(dist)} });
 }
 
 const VERT = `
-attribute vec2 position; attribute float aDist;
-uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt; uniform float uScale, uSway;
+attribute vec2 position; attribute vec2 aDir; attribute float aSide; attribute float aTaper; attribute float aDist;
+uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt; uniform float uScale, uSway, uWidth;
 varying float vDist;
 void main(){
   vDist = aDist;
   vec2 p = position;
-  float s = uSway * aDist;                          // 先端ほど揺れる
+  float s = uSway * aDist;
   p.x += sin(uTime*0.7 + position.y*4.0) * 0.025 * s;
   p.y += cos(uTime*0.6 + position.x*4.0) * 0.025 * s;
-  p += uTilt * aDist * 0.3;                          // 傾きで枝先が流れる
-  vec2 clip = p * uScale;
-  clip.x *= uResolution.y / uResolution.x;
-  gl_Position = vec4(clip, 0.0, 1.0);
+  p += uTilt * aDist * 0.3;
+  float aspect = uResolution.y / uResolution.x;
+  vec2 base = p * uScale; base.x *= aspect;
+  vec2 dscreen = normalize(vec2(aDir.x*aspect, aDir.y) + 1e-6);   // 画面空間での向き
+  vec2 nrm = vec2(-dscreen.y, dscreen.x);                          // 法線方向に太らせる
+  gl_Position = vec4(base + nrm * aSide * aTaper * uWidth, 0.0, 1.0);
 }`;
 const FRAG = `
 varying float vDist;
 uniform vec3 uColor; uniform float uGrow, uAlpha;
 void main(){
-  float vis = 1.0 - smoothstep(uGrow, uGrow + 0.08, vDist);   // 成長フロント
+  float vis = 1.0 - smoothstep(uGrow, uGrow + 0.08, vDist);
   float a = uAlpha * vis;
-  vec3 col = uColor * (0.7 + 0.5*(1.0 - vDist));               // 根元ほど明るい
+  vec3 col = uColor * (0.7 + 0.5*(1.0 - vDist));
   gl_FragColor = vec4(col, a);
 }`;
 
 let st;
-function growAgain(){ if(st){ st.grow = 0; st.growing = true; } }
-function regen(){ if(st){ st.mesh.geometry = makeTree(st.gl); st.grow = 0; st.growing = true; } }
+function growAgain(){ if(st){ st.grow=0; st.growing=true; } }
+function regen(){ if(st){ st.mesh.geometry = makeTree(st.gl, st.depth); st.grow=0; st.growing=true; } }
 
 const PARAMS = [
-  { key:'scale', uniform:'uScale', label:'大きさ',       type:'range', min:0.5, max:2.0, step:0.05, value:1.0 },
-  { key:'sway',  uniform:'uSway',  label:'揺れ',         type:'range', min:0.0, max:2.0, step:0.05, value:1.0 },
-  { key:'alpha', uniform:'uAlpha', label:'密度/明るさ',  type:'range', min:0.03, max:0.5, step:0.01, value:0.16 },
-  { key:'color', uniform:'uColor', label:'色',           type:'color', value:'#1faf5a' },
+  { key:'depth', label:'世代数（分岐の深さ）', type:'range', min:3, max:12, step:1, value:9 },   // 変更で再生成
+  { key:'width', uniform:'uWidth', label:'線の太さ', type:'range', min:0.0005, max:0.02, step:0.0005, value:0.004 },
+  { key:'scale', uniform:'uScale', label:'大きさ',   type:'range', min:0.5, max:2.0, step:0.05, value:1.0 },
+  { key:'sway',  uniform:'uSway',  label:'揺れ',     type:'range', min:0.0, max:2.0, step:0.05, value:1.0 },
+  { key:'alpha', uniform:'uAlpha', label:'密度/明るさ', type:'range', min:0.03, max:0.6, step:0.01, value:0.16 },
+  { key:'color', uniform:'uColor', label:'色',       type:'color', value:'#1faf5a' },
   { type:'button', label:'再成長', onClick: growAgain },
   { type:'button', label:'形を再生成', onClick: regen },
 ];
 
 mount({
   init(gl){
-    gl.clearColor(0, 0, 0, 1);   // 真っ黒背景
+    gl.clearColor(0, 0, 0, 1);
     const program = new Program(gl, { vertex: VERT, fragment: PRECISION + FRAG, transparent:true, depthTest:false, uniforms:{
       uTime:{value:0}, uResolution:{value:new Vec2(1,1)}, uTilt:{value:new Vec2(0,0)},
-      uScale:{value:1}, uSway:{value:1}, uAlpha:{value:0.16}, uGrow:{value:0}, uColor:{value:[0.12,0.69,0.35]} }});
-    if(program.setBlendFunc) program.setBlendFunc(gl.SRC_ALPHA, gl.ONE);   // 加算合成
-    st = { gl, program, mesh: new Mesh(gl, { geometry: makeTree(gl), program, mode: gl.LINES }), grow:0, growing:true };
+      uScale:{value:1}, uSway:{value:1}, uWidth:{value:0.004}, uAlpha:{value:0.16}, uGrow:{value:0}, uColor:{value:[0.12,0.69,0.35]} }});
+    if(program.setBlendFunc) program.setBlendFunc(gl.SRC_ALPHA, gl.ONE);
+    st = { gl, program, depth:9, mesh: new Mesh(gl, { geometry: makeTree(gl, 9), program }), grow:0, growing:true };
     paramPanel(PARAMS, { title:'ツリー調整', onChange:(k, v) => {
+      if(k === 'depth'){ st.depth = Math.round(v); st.mesh.geometry = makeTree(st.gl, st.depth); st.grow=0; st.growing=true; return; }
       const p = PARAMS.find(pp => pp.key === k); if(p && p.uniform)
         st.program.uniforms[p.uniform].value = (p.type === 'color') ? hexToRGBArr(v) : v;
     }});
@@ -90,6 +102,6 @@ mount({
     s.program.uniforms.uTilt.value.set(f.tiltX, f.tiltY);
     f.renderer.render({ scene: s.mesh });
   },
-}, { title:'分岐ツリー（忠実版）', subtitle:'JS生成の枝＋加算合成 / 成長・傾き揺れ・⚙調整' });
+}, { title:'分岐ツリー（忠実版）', subtitle:'枝の太さ・世代数も⚙で調整 / 成長・傾き揺れ' });
 </script>
 </body></html>
