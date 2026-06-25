@@ -8,8 +8,7 @@
 <script type="module">
 import { mount, paramPanel, PRECISION, Program, Mesh, Geometry, Vec2, hexToRGBArr } from '../engine.js';
 
-// 再帰分岐ツリーを生成。Line(細線) と Quad(太さ可変) の両ジオメトリを作り、切替可能。
-function makeSegments(maxDepth, spread){
+function makeSegments(maxDepth, spread, asym){
   const segs = []; let count = 0; const MAX = 20000;
   function branch(x, y, ang, len, depth){
     if(count > MAX || depth > maxDepth || len < 0.004) return;
@@ -18,7 +17,7 @@ function makeSegments(maxDepth, spread){
     segs.push([x, y, nx, ny, d0, d1]); count++;
     const n = 2 + (Math.random() < 0.35 ? 1 : 0);
     for(let i=0;i<n;i++){
-      const na = ang + (Math.random()-0.5)*spread + (i-0.5)*0.2;   // 親角 ± 広がり(ランダム) ＋左右ファン
+      const na = ang + (Math.random()-0.5)*spread + (i-0.5)*0.2 + asym;  // asym=左右非対称バイアス
       branch(nx, ny, na, len*(0.68 + Math.random()*0.14), depth+1);
     }
   }
@@ -32,16 +31,15 @@ function buildLineGeo(gl, segs){
   return new Geometry(gl, { position:{size:2,data:new Float32Array(pos)}, aDist:{size:1,data:new Float32Array(dist)} });
 }
 function buildQuadGeo(gl, segs){
-  const pos=[], dir=[], side=[], taper=[], dist=[];
+  const pos=[], dir=[], side=[], dist=[];
   for(const s of segs){
     let dx=s[2]-s[0], dy=s[3]-s[1]; const len=Math.hypot(dx,dy)||1e-5; dx/=len; dy/=len;
-    const t0=1.0-0.85*s[4], t1=1.0-0.85*s[5];
-    const V=[ [s[0],s[1],dx,dy,+1,t0,s[4]],[s[0],s[1],dx,dy,-1,t0,s[4]],[s[2],s[3],dx,dy,+1,t1,s[5]],
-              [s[2],s[3],dx,dy,+1,t1,s[5]],[s[0],s[1],dx,dy,-1,t0,s[4]],[s[2],s[3],dx,dy,-1,t1,s[5]] ];
-    for(const v of V){ pos.push(v[0],v[1]); dir.push(v[2],v[3]); side.push(v[4]); taper.push(v[5]); dist.push(v[6]); }
+    const V=[ [s[0],s[1],dx,dy,+1,s[4]],[s[0],s[1],dx,dy,-1,s[4]],[s[2],s[3],dx,dy,+1,s[5]],
+              [s[2],s[3],dx,dy,+1,s[5]],[s[0],s[1],dx,dy,-1,s[4]],[s[2],s[3],dx,dy,-1,s[5]] ];
+    for(const v of V){ pos.push(v[0],v[1]); dir.push(v[2],v[3]); side.push(v[4]); dist.push(v[5]); }
   }
   return new Geometry(gl, { position:{size:2,data:new Float32Array(pos)}, aDir:{size:2,data:new Float32Array(dir)},
-    aSide:{size:1,data:new Float32Array(side)}, aTaper:{size:1,data:new Float32Array(taper)}, aDist:{size:1,data:new Float32Array(dist)} });
+    aSide:{size:1,data:new Float32Array(side)}, aDist:{size:1,data:new Float32Array(dist)} });
 }
 
 const VERT_LINE = `
@@ -59,8 +57,8 @@ void main(){
   gl_Position = vec4(base, 0.0, 1.0);
 }`;
 const VERT_QUAD = `
-attribute vec2 position; attribute vec2 aDir; attribute float aSide; attribute float aTaper; attribute float aDist;
-uniform float uTime, uScale, uSway, uWidth; uniform vec2 uResolution, uTilt, uOrigin;
+attribute vec2 position; attribute vec2 aDir; attribute float aSide; attribute float aDist;
+uniform float uTime, uScale, uSway, uWidth, uTaperPow; uniform vec2 uResolution, uTilt, uOrigin;
 varying float vDist;
 void main(){
   vDist = aDist; vec2 p = position;
@@ -70,22 +68,23 @@ void main(){
   p += uTilt * aDist * 0.3;
   float aspect = uResolution.y/uResolution.x;
   vec2 base = p*uScale; base.x *= aspect; base += uOrigin;
+  float taper = pow(max(1.0 - aDist, 0.0), uTaperPow);   // 幹太く・先端細く（指数カーブ）
   vec2 dscreen = normalize(vec2(aDir.x*aspect, aDir.y) + 1e-6);
   vec2 nrm = vec2(-dscreen.y, dscreen.x);
-  gl_Position = vec4(base + nrm*aSide*aTaper*uWidth, 0.0, 1.0);
+  gl_Position = vec4(base + nrm*aSide*taper*uWidth, 0.0, 1.0);
 }`;
 const FRAG = `
 varying float vDist;
-uniform vec3 uColor; uniform float uGrow, uAlpha;
+uniform vec3 uColor, uColor2; uniform float uGrow, uAlpha;
 void main(){
   float vis = 1.0 - smoothstep(uGrow, uGrow + 0.08, vDist);
-  vec3 col = uColor * (0.7 + 0.5*(1.0 - vDist));
+  vec3 col = mix(uColor, uColor2, vDist) * (0.8 + 0.4*(1.0 - vDist));   // 根元色→先端色の世代グラデ
   gl_FragColor = vec4(col, uAlpha * vis);
 }`;
 
 let st;
 function rebuild(){
-  const segs = makeSegments(st.depth, st.spread);
+  const segs = makeSegments(st.depth, st.spread, st.asym);
   st.lineMesh.geometry = buildLineGeo(st.gl, segs);
   st.quadMesh.geometry = buildQuadGeo(st.gl, segs);
   st.grow = 0; st.growing = true;
@@ -96,13 +95,16 @@ function toggleMode(){ if(st) st.mode = (st.mode === 'quad') ? 'line' : 'quad'; 
 const PARAMS = [
   { key:'depth',  label:'世代数（分岐の深さ）', type:'range', min:3, max:12, step:1, value:9 },
   { key:'spread', label:'枝分かれ角（広がり）', type:'range', min:0.2, max:2.5, step:0.05, value:1.1 },
-  { key:'width',  uniform:'uWidth', label:'線の太さ（Quad時）', type:'range', min:0.0005, max:0.02, step:0.0005, value:0.004 },
+  { key:'asym',   label:'枝の偏り（左右非対称）', type:'range', min:-0.5, max:0.5, step:0.02, value:0 },
+  { key:'width',  uniform:'uWidth',    label:'線の太さ（Quad時）', type:'range', min:0.0005, max:0.02, step:0.0005, value:0.004 },
+  { key:'taper',  uniform:'uTaperPow', label:'先細りの強さ', type:'range', min:0.3, max:5.0, step:0.1, value:1.5 },
   { key:'scale',  uniform:'uScale', label:'大きさ',     type:'range', min:0.5, max:2.0, step:0.05, value:1.0 },
   { key:'sway',   uniform:'uSway',  label:'揺れ',       type:'range', min:0.0, max:2.0, step:0.05, value:1.0 },
   { key:'alpha',  uniform:'uAlpha', label:'密度/明るさ', type:'range', min:0.03, max:0.6, step:0.01, value:0.16 },
   { key:'ox',     label:'原点X',     type:'range', min:-1.0, max:1.0, step:0.02, value:0 },
   { key:'oy',     label:'原点Y',     type:'range', min:-1.0, max:1.0, step:0.02, value:0 },
-  { key:'color',  uniform:'uColor', label:'色',         type:'color', value:'#1faf5a' },
+  { key:'color',  uniform:'uColor',  label:'根元の色', type:'color', value:'#1faf5a' },
+  { key:'color2', uniform:'uColor2', label:'先端の色', type:'color', value:'#a8ff5e' },
   { type:'button', label:'描画: Line ⇄ Quad', onClick: toggleMode },
   { type:'button', label:'再成長', onClick: growAgain },
   { type:'button', label:'形を再生成', onClick: rebuild },
@@ -113,18 +115,20 @@ mount({
     gl.clearColor(0, 0, 0, 1);
     const uniforms = {
       uTime:{value:0}, uResolution:{value:new Vec2(1,1)}, uTilt:{value:new Vec2(0,0)}, uOrigin:{value:new Vec2(0,0)},
-      uScale:{value:1}, uSway:{value:1}, uWidth:{value:0.004}, uAlpha:{value:0.16}, uGrow:{value:0}, uColor:{value:[0.12,0.69,0.35]} };
+      uScale:{value:1}, uSway:{value:1}, uWidth:{value:0.004}, uTaperPow:{value:1.5}, uAlpha:{value:0.16}, uGrow:{value:0},
+      uColor:{value:[0.12,0.69,0.35]}, uColor2:{value:[0.66,1.0,0.37]} };
     const quadProgram = new Program(gl, { vertex: VERT_QUAD, fragment: PRECISION + FRAG, transparent:true, depthTest:false, uniforms });
     const lineProgram = new Program(gl, { vertex: VERT_LINE, fragment: PRECISION + FRAG, transparent:true, depthTest:false, uniforms });
     if(quadProgram.setBlendFunc) quadProgram.setBlendFunc(gl.SRC_ALPHA, gl.ONE);
     if(lineProgram.setBlendFunc) lineProgram.setBlendFunc(gl.SRC_ALPHA, gl.ONE);
-    const segs = makeSegments(9, 1.1);
-    st = { gl, u: uniforms, depth:9, spread:1.1, mode:'quad', grow:0, growing:true,
+    const segs = makeSegments(9, 1.1, 0);
+    st = { gl, u: uniforms, depth:9, spread:1.1, asym:0, mode:'quad', grow:0, growing:true,
       quadMesh: new Mesh(gl, { geometry: buildQuadGeo(gl, segs), program: quadProgram }),
       lineMesh: new Mesh(gl, { geometry: buildLineGeo(gl, segs), program: lineProgram, mode: gl.LINES }) };
     paramPanel(PARAMS, { title:'ツリー調整', onChange:(k, v) => {
       if(k === 'depth'){ st.depth = Math.round(v); rebuild(); return; }
       if(k === 'spread'){ st.spread = v; rebuild(); return; }
+      if(k === 'asym'){ st.asym = v; rebuild(); return; }
       if(k === 'ox'){ st.u.uOrigin.value.x = v; return; }
       if(k === 'oy'){ st.u.uOrigin.value.y = v; return; }
       const p = PARAMS.find(pp => pp.key === k); if(p && p.uniform)
@@ -141,6 +145,6 @@ mount({
     s.u.uTilt.value.set(f.tiltX, f.tiltY);
     f.renderer.render({ scene: (s.mode === 'quad') ? s.quadMesh : s.lineMesh });
   },
-}, { title:'分岐ツリー（忠実版）', subtitle:'Line/Quad切替・太さ・世代数・枝角・原点を⚙調整' });
+}, { title:'分岐ツリー（忠実版）', subtitle:'先細り・左右非対称・世代グラデも⚙で調整' });
 </script>
 </body></html>
