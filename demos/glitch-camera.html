@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0e12">
+<title>グリッチ・カメラ</title>
+</head><body>
+<script type="module">
+import { mount, paramPanel, PRECISION, VERT_FULLSCREEN, Program, Mesh, Triangle, Texture, Vec2 } from '../engine.js';
+
+// カメラ映像をテクスチャ化し、その実ピクセルにグリッチをかける（本物の処理）
+const frag = `
+uniform sampler2D uTex; uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt;
+uniform float uVideoAspect, uMirror, uGlitch, uRows, uShift, uChroma, uScan;
+varying vec2 vUv;
+float rand(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p);
+  float a=rand(i), b=rand(i+vec2(1,0)), c=rand(i+vec2(0,1)), d=rand(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }
+// 画面に映像を cover フィット（歪ませず全面を覆う）
+vec2 cover(vec2 uv){
+  float sa = uResolution.x / uResolution.y;
+  vec2 u = uv;
+  if(uVideoAspect > sa){ float s = sa/uVideoAspect; u.x = (uv.x-0.5)*s + 0.5; }
+  else               { float s = uVideoAspect/sa; u.y = (uv.y-0.5)*s + 0.5; }
+  if(uMirror > 0.5) u.x = 1.0 - u.x;     // 前面カメラは左右反転
+  return u;
+}
+void main(){
+  vec2 suv = vUv;
+  float tilt = length(uTilt);
+  float amt = uGlitch + tilt;                    // 常時グリッチ＋傾きで増幅
+  float t1 = mod(floor(uTime*8.0), 512.0), t2 = mod(floor(uTime*5.0), 512.0);
+
+  float row = floor(suv.y * uRows);
+  float gr = step(0.7, noise(vec2(row, t1)));     // 一部の行だけ割れる
+  suv.x += (noise(vec2(row*1.7, t2)) - 0.5) * (0.06*amt) * uShift * gr;
+
+  float sp = (0.003 + 0.02*amt) * uChroma;        // 色収差
+  vec3 col;
+  col.r = texture2D(uTex, cover(suv + vec2(sp, 0.0))).r;
+  col.g = texture2D(uTex, cover(suv)).g;
+  col.b = texture2D(uTex, cover(suv - vec2(sp, 0.0))).b;
+
+  col *= 1.0 + gr*amt*0.3;                         // 割れた行を少し明滅
+  col *= (1.0 - uScan) + uScan*(0.5 + 0.5*sin(suv.y * uResolution.y * 1.5));  // 走査線
+  col += step(0.96, noise(vec2(mod(floor(uTime*10.0),512.0), 3.0))) * amt * 0.3;  // 稀にフラッシュ
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+// --- カメラ ---
+const video = document.createElement('video');
+video.muted = true; video.autoplay = true; video.playsInline = true;
+video.setAttribute('playsinline',''); video.setAttribute('webkit-playsinline','');
+let facing = 'environment', st;
+async function startCamera(){
+  try{
+    if(video.srcObject) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: facing }, audio:false });
+    video.srcObject = stream; await video.play();
+  }catch(err){ console.error('カメラ取得失敗:', (err&&err.name)||'', (err&&err.message)||String(err)); }
+}
+async function switchCam(){
+  facing = (facing === 'environment') ? 'user' : 'environment';
+  if(st) st.program.uniforms.uMirror.value = (facing === 'user') ? 1 : 0;
+  if(video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); video.srcObject = null; }
+  await startCamera();
+}
+
+const PARAMS = [
+  { key:'glitch', uniform:'uGlitch', label:'グリッチ強さ(常時)', type:'range', min:0, max:1, step:0.02, value:0.15 },
+  { key:'rows',   uniform:'uRows',   label:'割れの粗さ',       type:'range', min:4, max:80, step:1, value:24 },
+  { key:'shift',  uniform:'uShift',  label:'横ズレ量',         type:'range', min:0, max:3, step:0.1, value:1 },
+  { key:'chroma', uniform:'uChroma', label:'色収差',           type:'range', min:0, max:4, step:0.1, value:1 },
+  { key:'scan',   uniform:'uScan',   label:'走査線',           type:'range', min:0, max:1, step:0.02, value:0.3 },
+  { type:'button', label:'カメラ切替（前↔後）', onClick: switchCam },
+];
+
+mount({
+  init(gl){
+    const program = new Program(gl, { vertex: VERT_FULLSCREEN, fragment: PRECISION + frag, uniforms: {
+      uTex:{value:null}, uTime:{value:0}, uResolution:{value:new Vec2(1,1)}, uTilt:{value:new Vec2(0,0)},
+      uVideoAspect:{value:1.777}, uMirror:{value:0}, uGlitch:{value:0.15}, uRows:{value:24},
+      uShift:{value:1}, uChroma:{value:1}, uScan:{value:0.3} }});
+    const tex = new Texture(gl, { generateMipmaps:false, flipY:true, width:2, height:2,
+      wrapS: gl.CLAMP_TO_EDGE, wrapT: gl.CLAMP_TO_EDGE, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+    program.uniforms.uTex.value = tex;
+    st = { program, mesh: new Mesh(gl, { geometry: new Triangle(gl), program }), tex };
+    paramPanel(PARAMS, { title:'グリッチ調整', onChange:(k, v) => {
+      const p = PARAMS.find(pp => pp.key === k); if(p && p.uniform) st.program.uniforms[p.uniform].value = v;
+    }});
+    const sb = document.getElementById('start'); if(sb) sb.addEventListener('click', startCamera);  // 起動タップでカメラ開始
+    return st;
+  },
+  resize(s, w, h){ s.program.uniforms.uResolution.value.set(w, h); },
+  draw(s, f){
+    if(video.readyState >= 2 && video.videoWidth){
+      s.tex.image = video; s.tex.needsUpdate = true;
+      s.program.uniforms.uVideoAspect.value = video.videoWidth / video.videoHeight;
+    }
+    s.program.uniforms.uTime.value = f.t;
+    s.program.uniforms.uTilt.value.set(f.tiltX, f.tiltY);
+    f.renderer.render({ scene: s.mesh });
+  },
+}, { title:'グリッチ・カメラ', subtitle:'カメラ映像を本当に歪ませる / 傾きで増幅・⚙で調整' });
+</script>
+</body></html>

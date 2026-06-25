@@ -17,6 +17,8 @@ export const DEMOS = [
     thumb:'repeating-linear-gradient(45deg,#0a2a33 0 8px,#1d6b7a 8px 12px,#5fe0e8 12px 14px,#0a2a33 14px 22px)' },
   { file:'glitch', title:'デジタル・グリッチ', cat:'合成', desc:'合成・サイバー',
     thumb:'repeating-linear-gradient(0deg,#100016 0 3px,#2a0a3a 3px 4px),linear-gradient(90deg,#ff2a6d55,#05d9e855,#d300c555)' },
+  { file:'glitch-camera', title:'グリッチ・カメラ', cat:'合成', desc:'カメラ映像を本当に歪ませる（要カメラ許可）',
+    thumb:'repeating-linear-gradient(0deg,#0a0010 0 3px,#240a36 3px 4px),linear-gradient(120deg,#05d9e866,#ff2a6d66,#ffd60066)' },
   { file:'particles', title:'星の砂 / 流れ場の粒子', cat:'群れ', desc:'点が主役・群れ',
     thumb:'radial-gradient(2px 2px at 20% 30%,#fff,transparent),radial-gradient(2px 2px at 50% 60%,#9fe,transparent),radial-gradient(2px 2px at 70% 40%,#f9e,transparent),radial-gradient(2px 2px at 80% 75%,#fff,transparent),radial-gradient(2px 2px at 35% 80%,#9ef,transparent),#06080c' },
 ];
