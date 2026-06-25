@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0e12">
+<title>D · 水中コースティクス</title>
+</head><body>
+<script type="module">
+import { mount, singlePass } from '../engine.js';
+const frag = `
+uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt;
+uniform float uSpeed, uScale, uContrast, uTiltK; uniform vec3 uTint;
+varying vec2 vUv;
+void main(){
+  vec2 uv = gl_FragCoord.xy / uResolution.xy;
+  float t = uTime * uSpeed + 23.0;
+  vec2 p = mod(uv * 6.28318 * uScale, 6.28318) - 250.0;
+  p += uTilt * uTiltK;
+  vec2 i = p;
+  float c = 1.0;
+  float inten = 0.005;
+  for(int n = 0; n < 5; n++){
+    float tt = t * (1.0 - (3.5 / float(n + 1)));
+    i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+    c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / inten), p.y / (cos(i.y + tt) / inten)));
+  }
+  c /= 5.0;
+  c = 1.17 - pow(c, 1.4);
+  vec3 col = vec3(pow(abs(c), uContrast));
+  col = clamp(col + uTint, 0.0, 1.0);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const PARAMS = [
+  { key:'spd',  uniform:'uSpeed',    label:'ゆらぎ速度',   type:'range', min:0.0, max:2.0, step:0.05, value:0.5 },
+  { key:'scl',  uniform:'uScale',    label:'網の細かさ',   type:'range', min:0.5, max:5.0, step:0.1, value:2.0 },
+  { key:'con',  uniform:'uContrast', label:'光のコントラスト', type:'range', min:2.0, max:16.0, step:0.5, value:8.0 },
+  { key:'tilt', uniform:'uTiltK',    label:'傾き感度',     type:'range', min:0.0, max:5.0, step:0.1, value:2.2 },
+  { key:'tint', uniform:'uTint',     label:'水の色',       type:'color', value:'#005273' },
+];
+mount(singlePass(frag, { title:'D 調整', params: PARAMS }),
+  { title:'D · 水中コースティクス', subtitle:'光・透明 / ⚙ で調整・URL保存' });
+</script>
+</body></html>

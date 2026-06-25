@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0e12">
+<title>A · 万華鏡クリスタル</title>
+</head><body>
+<script type="module">
+import { mount, singlePass } from '../engine.js';
+const frag = `
+uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt;
+uniform float uSeg, uScale, uRingFreq, uSpeed, uTiltK; uniform vec3 uTint;
+varying vec2 vUv;
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy*2.0 - uResolution) / uResolution.y;
+  uv = rot(uTime*0.1*uSpeed + uTilt.x*1.5*uTiltK) * uv;
+  float a = atan(uv.y, uv.x);
+  float r = length(uv);
+  float span = 6.28318 / uSeg;
+  a = mod(a, span);
+  a = abs(a - span*0.5);
+  vec2 p = vec2(cos(a), sin(a)) * r;
+  p *= uScale;
+  p += vec2(uTime*0.15*uSpeed, 0.0) + uTilt*0.6*uTiltK;
+  vec2 g = fract(p) - 0.5;
+  float d = length(g);
+  float ring = sin(d*uRingFreq - uTime*2.0*uSpeed);
+  float edge = smoothstep(0.0, 0.12, abs(ring));
+  vec3 col = 0.5 + 0.5*cos(6.28318*(r*0.5 + uTime*0.05*uSpeed + uTint));
+  col *= 0.4 + 0.6*edge;
+  col *= 1.0 - 0.25*r;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const PARAMS = [
+  { key:'seg',  uniform:'uSeg',     label:'対称数',       type:'range', min:3, max:12, step:1, value:6 },
+  { key:'scl',  uniform:'uScale',   label:'模様スケール', type:'range', min:1.0, max:6.0, step:0.1, value:3.0 },
+  { key:'ring', uniform:'uRingFreq',label:'リング細かさ', type:'range', min:5, max:40, step:1, value:22 },
+  { key:'spd',  uniform:'uSpeed',   label:'速度',         type:'range', min:0.0, max:3.0, step:0.05, value:1.0 },
+  { key:'tilt', uniform:'uTiltK',   label:'傾き感度',     type:'range', min:0.0, max:3.0, step:0.05, value:1.0 },
+  { key:'tint', uniform:'uTint',    label:'パレット',     type:'color', value:'#0054a8' },
+];
+mount(singlePass(frag, { title:'A 調整', params: PARAMS }),
+  { title:'A · 万華鏡クリスタル', subtitle:'幾何・対称 / ⚙ で調整・URL保存' });
+</script>
+</body></html>

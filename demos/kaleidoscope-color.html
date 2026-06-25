@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0e12">
+<title>A2 · 万華鏡（色も傾き連動）</title>
+</head><body>
+<script type="module">
+import { mount, paramPanel, PRECISION, VERT_FULLSCREEN, Program, Mesh, Triangle, Vec2, hexToRGBArr } from '../engine.js';
+
+const frag = `
+uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt; uniform float uColorPhase;
+uniform float uSeg, uScale, uRingFreq, uShift, uVividBase; uniform vec3 uTint;
+varying vec2 vUv;
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy*2.0 - uResolution) / uResolution.y;
+  uv = rot(uTime*0.1 + uTilt.x*1.5) * uv;
+  float a = atan(uv.y, uv.x);
+  float r = length(uv);
+  float span = 6.28318 / uSeg;
+  a = mod(a, span); a = abs(a - span*0.5);
+  vec2 p = vec2(cos(a), sin(a)) * r;
+  p *= uScale;
+  p += vec2(uTime*0.15, 0.0) + uTilt*0.6;
+  vec2 g = fract(p) - 0.5;
+  float d = length(g);
+  float ring = sin(d*uRingFreq - uTime*2.0);
+  float edge = smoothstep(0.0, 0.12, abs(ring));
+
+  float tiltMag = length(uTilt);
+  float hue = uColorPhase + r*0.5 + uShift*uTilt.x;   // 加速位相 + 同心円 + 即時シフト
+  vec3 col = 0.5 + 0.5*cos(6.28318*(hue + uTint));
+  float vivid = clamp(tiltMag, 0.0, 1.0);
+  vec3 gray = vec3(dot(col, vec3(0.333)));
+  col = mix(mix(gray, col, uVividBase), col, vivid);   // 静止=落ち着き / 傾け=鮮やか
+  col *= 0.4 + 0.6*edge;
+  col *= 1.0 - 0.25*r;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+let panel, st;
+const PARAMS = [
+  { key:'seg',   uniform:'uSeg',      label:'対称数',         type:'range', min:3, max:12, step:1, value:6 },
+  { key:'scl',   uniform:'uScale',    label:'模様スケール',   type:'range', min:1.0, max:6.0, step:0.1, value:3.0 },
+  { key:'ring',  uniform:'uRingFreq', label:'リング細かさ',   type:'range', min:5, max:40, step:1, value:22 },
+  { key:'drift', label:'静止時ドリフト', type:'range', min:0.0, max:0.1, step:0.002, value:0.012 },
+  { key:'accel', label:'傾き加速',       type:'range', min:0.0, max:4.0, step:0.1, value:1.3 },
+  { key:'shift', uniform:'uShift',     label:'即時色シフト',   type:'range', min:0.0, max:1.0, step:0.02, value:0.35 },
+  { key:'vivid', uniform:'uVividBase', label:'静止時の鮮やかさ', type:'range', min:0.0, max:1.0, step:0.05, value:0.5 },
+  { key:'tint',  uniform:'uTint',      label:'パレット',       type:'color', value:'#0054a8' },
+];
+
+mount({
+  init(gl){
+    const program = new Program(gl, { vertex: VERT_FULLSCREEN, fragment: PRECISION + frag, uniforms: {
+      uTime:{value:0}, uResolution:{value:new Vec2(1,1)}, uTilt:{value:new Vec2(0,0)}, uColorPhase:{value:0},
+      uSeg:{value:6}, uScale:{value:3}, uRingFreq:{value:22}, uShift:{value:0.35}, uVividBase:{value:0.5},
+      uTint:{value:[0.0,0.33,0.66]} }});
+    st = { program, mesh: new Mesh(gl, { geometry: new Triangle(gl), program }), phase:0, lastT:0, drift:0.012, accel:1.3 };
+    panel = paramPanel(PARAMS, { title:'A2 調整', onChange:(k, v) => {
+      if(k === 'drift') st.drift = v;
+      else if(k === 'accel') st.accel = v;
+      else { const p = PARAMS.find(pp => pp.key === k); if(p && p.uniform)
+        st.program.uniforms[p.uniform].value = (p.type === 'color') ? hexToRGBArr(v) : v; }
+    }});
+    return st;
+  },
+  resize(s, w, h){ s.program.uniforms.uResolution.value.set(w, h); },
+  draw(s, f){
+    let dt = f.t - s.lastT; s.lastT = f.t; dt = Math.max(0, Math.min(0.1, dt));
+    const tiltMag = Math.hypot(f.tiltX, f.tiltY);
+    s.phase += dt * (s.drift + s.accel * tiltMag);
+    s.program.uniforms.uTime.value = f.t;
+    s.program.uniforms.uTilt.value.set(f.tiltX, f.tiltY);
+    s.program.uniforms.uColorPhase.value = s.phase;
+    f.renderer.render({ scene: s.mesh });
+  },
+}, { title:'A2 · 万華鏡（色も傾き連動）', subtitle:'⚙ で形・色の効きを調整・URL保存' });
+</script>
+</body></html>

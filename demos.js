@@ -1,0 +1,22 @@
+// 全デモの定義（単一の真実）。一覧ページ index.html はこれを読んでカードを自動生成する。
+// 追加・並べ替えはこの配列を編集するだけ。file は demos/<file>.html を指す。
+export const DEMOS = [
+  { file:'ink', title:'インク', cat:'有機', desc:'有機的にうねる流れ場（確定路線）',
+    thumb:'radial-gradient(120px 90px at 30% 40%,#1a6b6b,transparent),radial-gradient(140px 100px at 70% 70%,#7a2a8a,transparent),#0a0c10' },
+  { file:'ink-smooth', title:'インク（格子低減）', cat:'有機', desc:'quintic補間＋回転＋hash改良',
+    thumb:'radial-gradient(130px 95px at 40% 55%,#1f7a72,transparent),radial-gradient(120px 90px at 75% 35%,#9a3a6a,transparent),#0a0c10' },
+  { file:'kaleidoscope', title:'万華鏡クリスタル', cat:'幾何', desc:'幾何・対称・宝石',
+    thumb:'conic-gradient(from 0deg at 50% 50%,#3fd6c2,#c46bff,#ffb454,#3fd6c2)' },
+  { file:'kaleidoscope-color', title:'万華鏡（色も傾き連動）', cat:'幾何', desc:'静止ゆっくり／傾け加速＋鮮やか',
+    thumb:'conic-gradient(from 90deg at 50% 50%,#ffb454,#3fd6c2,#c46bff,#ff6ba8,#ffb454)' },
+  { file:'reaction-diffusion', title:'生命の模様（反応拡散）', cat:'生命', desc:'成長するシミュレーション',
+    thumb:'radial-gradient(60px 60px at 30% 40%,#16e0c0,transparent),radial-gradient(50px 50px at 60% 60%,#16e0c0,transparent),radial-gradient(40px 40px at 75% 30%,#9a3ad0,transparent),#06100e' },
+  { file:'tunnel', title:'トンネル飛行', cat:'空間', desc:'没入・速度・奥行き',
+    thumb:'radial-gradient(circle at 50% 50%,#0a0c10 0%,#1a4a7a 60%,#3fd6c2 100%)' },
+  { file:'caustics', title:'水中コースティクス', cat:'光', desc:'光・透明・癒し',
+    thumb:'repeating-linear-gradient(45deg,#0a2a33 0 8px,#1d6b7a 8px 12px,#5fe0e8 12px 14px,#0a2a33 14px 22px)' },
+  { file:'glitch', title:'デジタル・グリッチ', cat:'合成', desc:'合成・サイバー',
+    thumb:'repeating-linear-gradient(0deg,#100016 0 3px,#2a0a3a 3px 4px),linear-gradient(90deg,#ff2a6d55,#05d9e855,#d300c555)' },
+  { file:'particles', title:'星の砂 / 流れ場の粒子', cat:'群れ', desc:'点が主役・群れ',
+    thumb:'radial-gradient(2px 2px at 20% 30%,#fff,transparent),radial-gradient(2px 2px at 50% 60%,#9fe,transparent),radial-gradient(2px 2px at 70% 40%,#f9e,transparent),radial-gradient(2px 2px at 80% 75%,#fff,transparent),radial-gradient(2px 2px at 35% 80%,#9ef,transparent),#06080c' },
+];

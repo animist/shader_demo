@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0e12">
+<title>F · 星の砂 / 流れ場の粒子</title>
+</head><body>
+<script type="module">
+import { mount, paramPanel, PRECISION, Program, Mesh, Geometry, Vec2, hexToRGBArr } from '../engine.js';
+
+const VERT = `
+attribute vec3 position;
+uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt; uniform float uDpr;
+uniform float uFlowScale, uFlowStep, uLifeSpeed, uGravity, uSize;
+varying float vLife;
+float hash(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p);
+  float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }
+vec2 flow(vec2 p){ float e=0.12;
+  float a=noise(p+vec2(0.0,e)), b=noise(p-vec2(0.0,e));
+  float c=noise(p+vec2(e,0.0)), d=noise(p-vec2(e,0.0));
+  return vec2(a-b, -(c-d)) / (2.0*e); }
+void main(){
+  float life = fract(position.z + uTime*uLifeSpeed);
+  vLife = life;
+  vec2 pos = position.xy;
+  for(int i=0;i<10;i++){ vec2 v = flow(pos*uFlowScale + uTime*0.05); pos += v*uFlowStep*life; }
+  pos += uTilt * life * uGravity;
+  vec2 clip = pos; clip.x *= uResolution.y / uResolution.x;
+  gl_Position = vec4(clip, 0.0, 1.0);
+  gl_PointSize = (2.0 + 3.0*sin(life*3.14159)) * uDpr * uSize;
+}`;
+const FRAG = `
+uniform vec3 uTint; varying float vLife;
+void main(){
+  float d = length(gl_PointCoord - 0.5);
+  if(d > 0.5) discard;
+  float al = smoothstep(0.5, 0.0, d);
+  float fade = sin(vLife * 3.14159);
+  vec3 col = 0.5 + 0.5*cos(6.28318*(vLife + uTint));
+  gl_FragColor = vec4(col * fade, al * fade * 0.9);
+}`;
+
+function makeGeo(gl, n){
+  const data = new Float32Array(n * 3);
+  for(let i=0;i<n;i++){ data[i*3]=Math.random()*2-1; data[i*3+1]=Math.random()*2-1; data[i*3+2]=Math.random(); }
+  return new Geometry(gl, { position: { size:3, data } });
+}
+
+let st;
+const PARAMS = [
+  { key:'count', label:'粒子数',       type:'range', min:2000, max:60000, step:2000, value:24000 },
+  { key:'flow',  uniform:'uFlowScale', label:'流れのスケール', type:'range', min:0.3, max:4.0, step:0.1, value:1.2 },
+  { key:'step',  uniform:'uFlowStep',  label:'流れの強さ',   type:'range', min:0.0, max:0.1, step:0.005, value:0.03 },
+  { key:'life',  uniform:'uLifeSpeed', label:'寿命スピード', type:'range', min:0.0, max:0.2, step:0.005, value:0.04 },
+  { key:'grav',  uniform:'uGravity',   label:'重力(傾き)',   type:'range', min:0.0, max:2.0, step:0.05, value:0.8 },
+  { key:'size',  uniform:'uSize',      label:'粒の大きさ',   type:'range', min:0.3, max:4.0, step:0.1, value:1.0 },
+  { key:'tint',  uniform:'uTint',      label:'色相',         type:'color', value:'#0059b3' },
+];
+
+mount({
+  init(gl){
+    const program = new Program(gl, { vertex: VERT, fragment: PRECISION + FRAG, transparent:true, depthTest:false,
+      uniforms: { uTime:{value:0}, uResolution:{value:new Vec2(1,1)}, uTilt:{value:new Vec2(0,0)}, uDpr:{value:1},
+        uFlowScale:{value:1.2}, uFlowStep:{value:0.03}, uLifeSpeed:{value:0.04}, uGravity:{value:0.8}, uSize:{value:1.0},
+        uTint:{value:[0.0,0.35,0.7]} }});
+    if (program.setBlendFunc) program.setBlendFunc(gl.SRC_ALPHA, gl.ONE);
+    st = { gl, program, mesh: new Mesh(gl, { geometry: makeGeo(gl, 24000), program, mode: gl.POINTS }) };
+    paramPanel(PARAMS, { title:'F 調整', onChange:(k, v) => {
+      if(k === 'count'){ st.mesh.geometry = makeGeo(st.gl, Math.round(v)); }
+      else { const p = PARAMS.find(pp => pp.key === k); if(p && p.uniform)
+        st.program.uniforms[p.uniform].value = (p.type === 'color') ? hexToRGBArr(v) : v; }
+    }});
+    return st;
+  },
+  resize(s, w, h){ s.program.uniforms.uResolution.value.set(w, h); },
+  draw(s, f){
+    s.program.uniforms.uTime.value = f.t;
+    s.program.uniforms.uTilt.value.set(f.tiltX, f.tiltY);
+    s.program.uniforms.uDpr.value = f.renderer.dpr;
+    f.renderer.render({ scene: s.mesh });
+  },
+}, { title:'F · 星の砂 / 流れ場の粒子', subtitle:'点が主役 / ⚙ で調整・URL保存' });
+</script>
+</body></html>

@@ -1,0 +1,143 @@
+<title>スマホ向け Shader デモ — 方向性プラン</title>
+<style>
+  :root{
+    --bg:#0c0e12; --panel:#14171d; --panel2:#1a1e26; --ink:#e8eaf0;
+    --muted:#9aa3b2; --line:#262b35;
+    --accent:#3fd6c2; --accent2:#c46bff; --warn:#ffb454;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+      radial-gradient(1200px 800px at 70% -10%, #16203a 0%, transparent 55%),
+      radial-gradient(900px 700px at 0% 110%, #2a1430 0%, transparent 50%),
+      var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    line-height:1.7; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:48px 22px 90px}
+  .kicker{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{font-size:30px;line-height:1.25;margin:.3em 0 .1em;font-weight:800;letter-spacing:.01em}
+  .sub{color:var(--muted);font-size:15px;margin-bottom:30px}
+  h2{font-size:20px;margin:38px 0 14px;font-weight:800;display:flex;align-items:center;gap:10px}
+  h2 .n{font-size:12px;color:#0c0e12;background:var(--accent);width:22px;height:22px;border-radius:6px;
+    display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .lead{font-size:16px;color:#cfd5e0}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:14px;padding:18px 20px;margin:14px 0}
+  .row{display:flex;flex-wrap:wrap;gap:14px}
+  .row .card{flex:1 1 230px;margin:0}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:20px;
+    border:1px solid var(--line);color:var(--muted);background:#0e1218}
+  .tag.on{color:#06120f;background:var(--accent);border-color:var(--accent)}
+  .tag.a2{color:#120a18;background:var(--accent2);border-color:var(--accent2)}
+  .lbl{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:6px}
+  .big{font-size:17px;font-weight:700}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:6px 0}
+  code{background:#0e1218;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13px;color:#9fe6db;
+    font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  .pill-rec{font-size:11px;font-weight:800;color:#06120f;background:var(--accent);padding:2px 8px;border-radius:20px}
+  .layers{counter-reset:l;display:flex;flex-direction:column;gap:0}
+  .layer{position:relative;padding:14px 16px 14px 56px;border:1px solid var(--line);border-radius:12px;margin:8px 0;
+    background:#10141b}
+  .layer:before{counter-increment:l;content:counter(l);position:absolute;left:14px;top:14px;width:26px;height:26px;
+    border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#06120f;font-weight:800;
+    display:flex;align-items:center;justify-content:center;font-size:14px}
+  .layer b{font-size:15px}
+  .layer .d{color:var(--muted);font-size:14px}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 4px;color:var(--muted);font-size:13px}
+  .flow .b{background:#0e1218;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink);font-size:13px}
+  .arrow{color:var(--accent)}
+  .warn{border-left:3px solid var(--warn);background:#1c1810}
+  .warn .lbl{color:var(--warn)}
+  .q{color:var(--muted)}
+  .q b{color:var(--ink)}
+  hr{border:none;border-top:1px solid var(--line);margin:34px 0}
+  .foot{color:var(--muted);font-size:13px;margin-top:8px}
+  .swatch{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px;border:1px solid rgba(255,255,255,.15)}
+</style>
+
+<div class="wrap">
+  <div class="kicker">Creative + Technical Spec · v1</div>
+  <h1>スマホブラウザ向け Shader ビジュアルデモ<br>方向性プラン</h1>
+  <div class="sub">grill セッションで確定した骨格と、想像と実装を近づけるための設計判断のまとめ</div>
+
+  <h2><span class="n">◆</span>確定した方向性</h2>
+  <div class="lead">「半透明の有機的な媒質の中を、インク／流体が滲んでうねる」世界観。一枚の流れ場が全てを駆動する。</div>
+  <div class="row" style="margin-top:14px">
+    <div class="card"><div class="lbl">用途</div><div class="big">自己表現・実験作品</div>
+      <div class="foot">表現の面白さ優先。攻めてよい</div></div>
+    <div class="card"><div class="lbl">世界観</div><div class="big">有機膜 × インク／煙</div>
+      <div class="foot">柔らかく生命感のある流体</div></div>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <div class="card"><div class="lbl">動き</div><div class="big">有機的にうねる</div>
+      <div class="foot">flow / warp</div></div>
+    <div class="card"><div class="lbl">入力</div><div class="big">ジャイロ / 傾き</div>
+      <div class="foot">スマホならではの没入感</div></div>
+    <div class="card"><div class="lbl">合成</div><div class="big">抽象面 + 3D + 粒子の融合</div>
+      <div class="foot">1つの場で一貫させる</div></div>
+  </div>
+
+  <h2><span class="n">1</span>構造の決定 <span class="pill-rec">統一フローフィールド型 (2.5D)</span></h2>
+  <p class="lead">「任せたい」とのことなので決めました。<b>一枚の curl noise 流れ場を“真実の源”にする</b>のが、狙い（一貫したうねり）に対して最も美しく、かつモバイルで現実的です。</p>
+  <div class="flow">
+    <span class="b">domain-warped FBM</span><span class="arrow">→</span>
+    <span class="b">curl noise 流れ場</span><span class="arrow">→</span>
+    <span class="b">膜の高さ・法線</span>
+    <span class="b">インクの濃度移流</span>
+    <span class="b">粒子の移流</span>
+  </div>
+  <div class="card">
+    <ul>
+      <li><b>3Dに見せるが、フルのレイマーチングはしない。</b> 高さ場→疑似法線→ライティングで screen-space に <b>2.5D</b> として描く。立体感は出るが負荷は桁で軽い</li>
+      <li><b>一貫性 = 美しさ。</b> 面のうねり・インクの拡散・粒子の流れが全部同じ場から生まれるので、見た目に必然性が宿る</li>
+      <li><b>安全弁としてレイヤー的退避を内蔵。</b> 重ければ「粒子層だけ低解像度の別パスに逃がす」。＝統一型の美しさ＋レイヤー型の最適化自由度のいいとこ取り</li>
+    </ul>
+  </div>
+
+  <h2><span class="n">2</span>実装レイヤー構成</h2>
+  <div class="layers">
+    <div class="layer"><b>流れ場（Flow field）</b><div class="d">domain-warped FBM から curl noise を生成。これが全レイヤーの入力。ジャイロの傾きベクトルをここに重力／方向として注入</div></div>
+    <div class="layer"><b>膜／インク描画パス（2.5D）</b><div class="d">流れ場で高さと濃度を作り、法線を起こして疑似ライティング。インクの滲み・縁の発色（玉虫）はここ。フルスクリーン fragment 中心</div></div>
+    <div class="layer"><b>パーティクルパス（GPGPU）</b><div class="d">流れ場に沿って粒子を移流（ping-pong FBO）。加算合成。<b>低解像度で描いて拡大</b>＝安全弁レイヤー</div></div>
+    <div class="layer"><b>ポスト処理</b><div class="d">控えめな bloom／粒状ノイズ／ビネット。質感の最後の仕上げ。負荷を見て増減</div></div>
+  </div>
+
+  <h2><span class="n">3</span>技術スタックと土台</h2>
+  <div class="row">
+    <div class="card"><div class="lbl">API</div><div class="big">WebGL2 ベース</div>
+      <div class="foot"><code>highp</code> 必須化で precision 問題が大幅に軽減。WebGPU(WGSL) は対応端末向けの将来オプション</div></div>
+    <div class="card"><div class="lbl">ライブラリ</div><div class="big">OGL（軽量）推奨 / Three.js（潤沢）</div>
+      <div class="foot">フルスクリーン1枚＋粒子なら OGL が軽い。エコシステム重視なら Three.js</div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="lbl">最初から組み込むモバイル対策</div>
+    <ul>
+      <li><b>解像度スケーリング</b>：小さいバックバッファ＋CSS拡大、<code>devicePixelRatio</code> を ~1.5 に上限クランプ</li>
+      <li><b>precision ガード</b>：<code>#ifdef GL_FRAGMENT_PRECISION_HIGH</code> で <code>highp</code>→<code>mediump</code> フォールバック（WebGL1保険）。実機テスト前提</li>
+      <li><b>FPS 上限</b>：30〜可変。発熱・バッテリー対策。<code>document.hidden</code> で一時停止</li>
+      <li><b>粒子数を端末ティアで分岐</b>、サーマルスロットリング前提で“ピークに頼らない”設計</li>
+    </ul>
+  </div>
+
+  <h2><span class="n">!</span>ジャイロの落とし穴（先に潰す）</h2>
+  <div class="card warn">
+    <div class="lbl">iOS DeviceOrientation</div>
+    iOS Safari はジャイロに<b>ユーザー操作起点の許可リクエスト</b>（<code>DeviceOrientationEvent.requestPermission()</code>）が必須。タップで開始する導線を最初から用意する。値は<b>スムージング</b>して流れ場へ。HTTPS 必須。
+  </div>
+
+  <h2><span class="n">?</span>次に詰める論点（実装前 or 実機を見て）</h2>
+  <div class="card">
+    <p class="q"><b>パレット</b> ── 暗ベース＋発光インク？ 明ベース＋墨？ 現状の推し:
+      <span class="swatch" style="background:#0c0e12"></span>深いチャコール地に
+      <span class="swatch" style="background:#3fd6c2"></span>→<span class="swatch" style="background:#c46bff"></span>玉虫の発光インク</p>
+    <p class="q"><b>奥行きの強さ</b> ── 平面寄り（パララックス軽め）か、媒質の中に潜る感じか</p>
+    <p class="q"><b>粒子の密度</b> ── 微細なダスト多数か、太いインク繊維少数か</p>
+    <p class="q"><b>レイマーチ要素</b> ── 後から“ここぞ”の一点だけ本物の3Dを足す価値があるか</p>
+  </div>
+
+  <hr>
+  <h2 style="margin-top:0"><span class="n">▶</span>提案する次の一手</h2>
+  <p class="lead"><b>最小スキャフォールドを1本作って実機で測る。</b> フルスクリーンの流れ場＋ジャイロ＋解像度スケーリング＋precision ガードだけを入れた“土台”を先に動かし、iPhone/Android で fps と発熱を確認 → そこから膜・粒子・ポストを盛っていく。盛る前に器の性能を知るのが、想像と実装を最短で近づける道です。</p>
+  <p class="foot">この器が動けば、あとは「同じ流れ場に何を足すか」を実機を見ながら一つずつ判断できます。</p>
+</div>
