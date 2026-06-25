@@ -14,8 +14,6 @@
   #msg span{font-size:14px;color:#9aa3b2}
 </style>
 </head><body>
-<div id="scorebar">SCORE 0 ・ LIVES 3</div>
-<div id="msg"><b id="msgt"></b><span>タップでリスタート</span></div>
 <script type="module">
 import { mount, paramPanel, PRECISION, VERT_FULLSCREEN, Program, Mesh, Triangle, Texture, Vec2, hexToRGBArr } from '../engine.js';
 
@@ -106,8 +104,11 @@ mount({
       const p=PARAMS.find(pp=>pp.key===k); if(p&&p.uniform) st.program.uniforms[p.uniform].value=(p.type==='color')?hexToRGBArr(v):v;
     }});
 
-    st.scorebar = document.getElementById('scorebar');
-    st.msg = document.getElementById('msg'); st.msgt = document.getElementById('msgt');
+    // スコア表示は engine が body を作り直すため JS で生成する
+    const sb = document.createElement('div'); sb.id = 'scorebar'; document.body.appendChild(sb);
+    const msg = document.createElement('div'); msg.id = 'msg';
+    msg.innerHTML = '<b id="msgt"></b><span>タップでリスタート</span>'; document.body.appendChild(msg);
+    st.scorebar = sb; st.msg = msg; st.msgt = msg.querySelector('#msgt');
     return st;
   },
   resize(s,w,h){ s.program.uniforms.uResolution.value.set(w,h); },
