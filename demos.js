@@ -25,6 +25,8 @@ export const DEMOS = [
     thumb:'radial-gradient(70px 90px at 50% 50%,#1faf5a,transparent),radial-gradient(120px 150px at 50% 50%,#0c4a28,transparent),#000' },
   { file:'fiber-field', title:'繊維フィールド（近似版）', cat:'樹', desc:'フラグメントで繊維塊を擬似生成',
     thumb:'radial-gradient(80px 100px at 50% 50%,#1faf5a88,transparent),repeating-conic-gradient(from 0deg at 50% 50%,#0c4a2800 0deg,#1faf5a44 4deg,#0c4a2800 8deg),#000' },
+  { file:'breakout', title:'Breakout（ゲーム）', cat:'ゲーム', desc:'シェーダーSDF描画＋JSロジック / タッチ・傾き操作',
+    thumb:'linear-gradient(180deg,#ff5ea8 0 18%,#c46bff 18% 36%,#5ed8ff 36% 54%,#0a1422 54%),radial-gradient(8px 8px at 50% 80%,#fff,transparent)' },
   { file:'particles', title:'星の砂 / 流れ場の粒子', cat:'群れ', desc:'点が主役・群れ',
     thumb:'radial-gradient(2px 2px at 20% 30%,#fff,transparent),radial-gradient(2px 2px at 50% 60%,#9fe,transparent),radial-gradient(2px 2px at 70% 40%,#f9e,transparent),radial-gradient(2px 2px at 80% 75%,#fff,transparent),radial-gradient(2px 2px at 35% 80%,#9ef,transparent),#06080c' },
 ];

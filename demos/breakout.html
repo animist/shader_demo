@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#05070c">
+<title>Breakout（シェーダー描画）</title>
+<style>
+  #scorebar{position:fixed;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);z-index:11;
+    font:700 14px/1 ui-monospace,Menlo,Consolas,monospace;color:#cfe8ff;letter-spacing:.06em;
+    background:rgba(8,12,20,.55);border:1px solid #243044;border-radius:999px;padding:7px 14px;backdrop-filter:blur(6px)}
+  #msg{position:fixed;inset:0;z-index:12;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;
+    color:#fff;text-align:center;pointer-events:none}
+  #msg b{font-size:30px;font-weight:800;letter-spacing:.04em;text-shadow:0 0 20px #2bd1ff}
+  #msg span{font-size:14px;color:#9aa3b2}
+</style>
+</head><body>
+<div id="scorebar">SCORE 0 ・ LIVES 3</div>
+<div id="msg"><b id="msgt"></b><span>タップでリスタート</span></div>
+<script type="module">
+import { mount, paramPanel, PRECISION, VERT_FULLSCREEN, Program, Mesh, Triangle, Texture, Vec2, hexToRGBArr } from '../engine.js';
+
+const COLS = 7, ROWS = 5, N = COLS*ROWS;
+const BX0 = 0.06, BX1 = 0.94, BY0 = 0.62, BY1 = 0.96, PY = 0.07;
+
+const frag = `
+uniform vec2 uResolution; uniform sampler2D uBricks;
+uniform vec2 uBall; uniform float uBallR;
+uniform float uPaddleX, uPaddleW, uGlow; uniform vec3 uColA, uColB;
+varying vec2 vUv;
+const float COLS = ${COLS}.0, ROWS = ${ROWS}.0;
+const float BX0 = ${BX0}, BX1 = ${BX1}, BY0 = ${BY0}, BY1 = ${BY1}, PY = ${PY};
+float box(vec2 p, vec2 b){ vec2 d = abs(p)-b; return length(max(d,0.0)) + min(max(d.x,d.y),0.0); }
+void main(){
+  vec2 uv = vUv;
+  float aspect = uResolution.x/uResolution.y;
+  vec3 col = vec3(0.015,0.02,0.035);
+  col += 0.02*smoothstep(0.5,0.0,length(uv-0.5));      // 中心ほのか
+
+  // bricks
+  if(uv.x>BX0 && uv.x<BX1 && uv.y>BY0 && uv.y<BY1){
+    float fx=(uv.x-BX0)/(BX1-BX0), fy=(uv.y-BY0)/(BY1-BY0);
+    float ci=floor(fx*COLS), ri=floor(fy*ROWS);
+    float alive = texture2D(uBricks, vec2((ci+0.5)/COLS, (ri+0.5)/ROWS)).r;
+    if(alive>0.5){
+      vec2 cs = vec2((BX1-BX0)/COLS, (BY1-BY0)/ROWS);
+      vec2 c  = vec2(BX0+(ci+0.5)*cs.x, BY0+(ri+0.5)*cs.y);
+      float b = box(uv-c, cs*0.5 - vec2(0.006));
+      vec3 bc = mix(uColB, uColA, ri/(ROWS-1.0));
+      col += bc * smoothstep(0.004,0.0,b);
+      col += bc * uGlow*0.5 * smoothstep(0.03,0.0,b);
+    }
+  }
+  // paddle
+  { float b = box(uv-vec2(uPaddleX, PY), vec2(uPaddleW*0.5, 0.013));
+    col += vec3(0.55,0.85,1.0)*smoothstep(0.004,0.0,b);
+    col += vec3(0.3,0.7,1.0)*uGlow*0.7*smoothstep(0.05,0.0,b); }
+  // ball（アスペクト補正で真円）
+  { vec2 d = uv-uBall; d.x*=aspect; float r=length(d);
+    col += vec3(1.0,0.92,0.7)*smoothstep(uBallR+0.004,uBallR,r);
+    col += vec3(1.0,0.8,0.4)*uGlow*0.9*smoothstep(uBallR*4.0,uBallR,r); }
+  // walls（細い縁）
+  col += vec3(0.1,0.2,0.35)*(smoothstep(0.02,0.015,uv.x)+smoothstep(0.98,0.985,uv.x)+smoothstep(0.985,0.99,uv.y));
+  gl_FragColor = vec4(min(col, 1.6), 1.0);
+}`;
+
+let st;
+const data = new Uint8Array(N*4);
+function resetBricks(){ for(let i=0;i<N;i++){ data[i*4]=255; data[i*4+3]=255; } if(st){ st.tex.needsUpdate=true; st.remaining=N; } }
+function serve(){ st.bx=0.5; st.by=0.24; const a=(Math.random()-0.5)*0.6; st.vx=Math.sin(a); st.vy=Math.cos(a); }
+function restart(){ resetBricks(); st.score=0; st.lives=3; st.speed=st.baseSpeed; st.over=false; st.win=false; serve(); }
+
+const PARAMS = [
+  { key:'speed', label:'ボール速度',  type:'range', min:0.3, max:1.2, step:0.05, value:0.6 },
+  { key:'pw',    label:'パドル幅',    type:'range', min:0.1, max:0.35, step:0.01, value:0.2 },
+  { key:'ballr', label:'ボール大きさ', type:'range', min:0.01, max:0.04, step:0.002, value:0.018 },
+  { key:'glow',  uniform:'uGlow', label:'グロー', type:'range', min:0.0, max:1.0, step:0.05, value:0.5 },
+  { key:'colA',  uniform:'uColA', label:'上段の色', type:'color', value:'#ff5ea8' },
+  { key:'colB',  uniform:'uColB', label:'下段の色', type:'color', value:'#5ed8ff' },
+  { type:'button', label:'リスタート', onClick: ()=>restart() },
+];
+
+mount({
+  init(gl){
+    gl.clearColor(0.015, 0.02, 0.035, 1);
+    const program = new Program(gl, { vertex: VERT_FULLSCREEN, fragment: PRECISION + frag, uniforms:{
+      uResolution:{value:new Vec2(1,1)}, uBricks:{value:null}, uBall:{value:new Vec2(0.5,0.24)}, uBallR:{value:0.018},
+      uPaddleX:{value:0.5}, uPaddleW:{value:0.2}, uGlow:{value:0.5},
+      uColA:{value:hexToRGBArr('#ff5ea8')}, uColB:{value:hexToRGBArr('#5ed8ff')} }});
+    const tex = new Texture(gl, { image:data, width:COLS, height:ROWS, generateMipmaps:false,
+      minFilter:gl.NEAREST, magFilter:gl.NEAREST, flipY:false });
+    program.uniforms.uBricks.value = tex;
+    st = { gl, program, tex, mesh:new Mesh(gl,{geometry:new Triangle(gl), program}),
+      bx:0.5, by:0.24, vx:0.3, vy:1.0, paddleX:0.5, pointerX:0.5, usePointer:false,
+      pw:0.2, ballR:0.018, speed:0.6, baseSpeed:0.6, score:0, lives:3, remaining:N, over:false, win:false };
+    resetBricks(); serve();
+
+    // パドル操作（タッチ/ドラッグ/移動）＋ジャイロは draw 側でフォールバック
+    function pt(e){ const x=(e.touches?e.touches[0]:e).clientX; st.pointerX=Math.max(0,Math.min(1,x/window.innerWidth)); st.usePointer=true; }
+    addEventListener('pointermove', pt);
+    addEventListener('pointerdown', e=>{ pt(e); if(st.over) restart(); });
+
+    paramPanel(PARAMS, { title:'Breakout調整', onChange:(k,v)=>{
+      if(k==='speed'){ st.baseSpeed=v; if(!st.over) st.speed=Math.max(st.speed, v); return; }
+      if(k==='pw'){ st.pw=v; st.program.uniforms.uPaddleW.value=v; return; }
+      if(k==='ballr'){ st.ballR=v; st.program.uniforms.uBallR.value=v; return; }
+      const p=PARAMS.find(pp=>pp.key===k); if(p&&p.uniform) st.program.uniforms[p.uniform].value=(p.type==='color')?hexToRGBArr(v):v;
+    }});
+
+    st.scorebar = document.getElementById('scorebar');
+    st.msg = document.getElementById('msg'); st.msgt = document.getElementById('msgt');
+    return st;
+  },
+  resize(s,w,h){ s.program.uniforms.uResolution.value.set(w,h); },
+  draw(s,f){
+    let dt=(s.lastT!=null)?f.t-s.lastT:0; s.lastT=f.t; dt=Math.max(0,Math.min(0.05,dt));
+    // パドル目標：タッチがあればそれ、無ければジャイロ
+    const target = s.usePointer ? s.pointerX : (0.5 + f.tiltX*0.5);
+    s.paddleX += (target - s.paddleX)*0.35;
+    s.paddleX = Math.max(s.pw*0.5, Math.min(1-s.pw*0.5, s.paddleX));
+
+    if(!s.over){
+      const sp=s.speed, r=s.ballR;
+      let v=Math.hypot(s.vx,s.vy)||1; s.vx=s.vx/v*sp; s.vy=s.vy/v*sp;
+      s.bx+=s.vx*dt; s.by+=s.vy*dt;
+      if(s.bx<0.02+r){ s.bx=0.02+r; s.vx=Math.abs(s.vx); }
+      if(s.bx>0.98-r){ s.bx=0.98-r; s.vx=-Math.abs(s.vx); }
+      if(s.by>0.985-r){ s.by=0.985-r; s.vy=-Math.abs(s.vy); }
+      // paddle
+      if(s.vy<0 && s.by<PY+0.014+r && s.by>PY-0.03 && Math.abs(s.bx-s.paddleX)<s.pw*0.5+r){
+        s.vy=Math.abs(s.vy); const hit=(s.bx-s.paddleX)/(s.pw*0.5); s.vx+=hit*0.5*sp;
+      }
+      // bricks
+      if(s.by>BY0-r && s.by<BY1+r && s.bx>BX0 && s.bx<BX1){
+        const fx=(s.bx-BX0)/(BX1-BX0), fy=(s.by-BY0)/(BY1-BY0);
+        if(fx>=0&&fx<1&&fy>=0&&fy<1){
+          const c=Math.floor(fx*COLS), row=Math.floor(fy*ROWS), idx=row*COLS+c;
+          if(idx>=0&&idx<N && data[idx*4]>0){
+            data[idx*4]=0; s.tex.needsUpdate=true; s.remaining--; s.score+=10;
+            s.vy=-s.vy; s.speed=Math.min(1.15, s.speed+0.01);
+            if(s.remaining<=0){ s.over=true; s.win=true; }
+          }
+        }
+      }
+      if(s.by<0){ s.lives--; if(s.lives<=0){ s.over=true; s.win=false; } else serve(); }
+    }
+
+    s.program.uniforms.uBall.value.set(s.bx, s.by);
+    s.program.uniforms.uPaddleX.value = s.paddleX;
+    f.renderer.render({ scene: s.mesh });
+
+    s.scorebar.textContent = `SCORE ${s.score} ・ LIVES ${Math.max(0,s.lives)}`;
+    if(s.over){ s.msg.style.display='flex'; s.msgt.textContent = s.win ? 'CLEAR!' : 'GAME OVER'; }
+    else s.msg.style.display='none';
+  },
+}, { title:'Breakout（シェーダー描画）', subtitle:'タッチ/傾きでパドル / 盤面はSDF＋グローで描画' });
+</script>
+</body></html>
