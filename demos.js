@@ -21,6 +21,10 @@ export const DEMOS = [
     thumb:'repeating-linear-gradient(0deg,#0a0010 0 3px,#240a36 3px 4px),linear-gradient(120deg,#05d9e866,#ff2a6d66,#ffd60066)' },
   { file:'glitch-youtube', title:'グリッチ・YouTube', cat:'合成', desc:'YouTube背景＋グリッチ合成（動画ID指定可）',
     thumb:'repeating-linear-gradient(0deg,#1a0000 0 3px,#3a0a0a 3px 4px),linear-gradient(120deg,#ff000066,#05d9e866,#ffffff44)' },
+  { file:'branch-tree', title:'分岐ツリー（忠実版）', cat:'樹', desc:'再帰分岐の枝を加算合成で描画・成長/揺れ',
+    thumb:'radial-gradient(70px 90px at 50% 50%,#1faf5a,transparent),radial-gradient(120px 150px at 50% 50%,#0c4a28,transparent),#000' },
+  { file:'fiber-field', title:'繊維フィールド（近似版）', cat:'樹', desc:'フラグメントで繊維塊を擬似生成',
+    thumb:'radial-gradient(80px 100px at 50% 50%,#1faf5a88,transparent),repeating-conic-gradient(from 0deg at 50% 50%,#0c4a2800 0deg,#1faf5a44 4deg,#0c4a2800 8deg),#000' },
   { file:'particles', title:'星の砂 / 流れ場の粒子', cat:'群れ', desc:'点が主役・群れ',
     thumb:'radial-gradient(2px 2px at 20% 30%,#fff,transparent),radial-gradient(2px 2px at 50% 60%,#9fe,transparent),radial-gradient(2px 2px at 70% 40%,#f9e,transparent),radial-gradient(2px 2px at 80% 75%,#fff,transparent),radial-gradient(2px 2px at 35% 80%,#9ef,transparent),#06080c' },
 ];
