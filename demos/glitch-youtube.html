@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0c0e12">
+<title>グリッチ・YouTube</title>
+</head><body>
+<script type="module">
+import { mount, paramPanel, PRECISION, VERT_FULLSCREEN, Program, Mesh, Triangle, Vec2 } from '../engine.js';
+
+// YouTube はクロスオリジンで“ピクセルを読めない”ため、映像自体は加工不可。
+// → iframe を背景に再生し、その上にグリッチ模様を screen 合成（加算）するオーバーレイ方式。
+const frag = `
+uniform float uTime; uniform vec2 uResolution; uniform vec2 uTilt;
+uniform float uGlitch, uRows, uShift, uChroma, uScan;
+varying vec2 vUv;
+float rand(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p);
+  float a=rand(i), b=rand(i+vec2(1,0)), c=rand(i+vec2(0,1)), d=rand(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }
+void main(){
+  // 出力は「映像に加算する光」。黒(0)は screen 合成で素通し＝映像が見える。
+  vec2 uv = vUv;
+  float tilt = length(uTilt);
+  float amt = uGlitch + tilt;
+  float t1 = mod(floor(uTime*8.0),512.0), t2 = mod(floor(uTime*5.0),512.0);
+
+  float row = floor(uv.y * uRows);
+  float gr = step(0.78, noise(vec2(row, t1)));      // 一部の行が裂ける
+  float off = noise(vec2(row*1.7, t2)) - 0.5;
+
+  vec3 col = vec3(0.0);
+  float bar = gr * (0.12 + 0.6*amt);
+  float band = smoothstep(0.0, 0.5, abs(off)) * bar;
+  col += band * (0.5 + 0.5*cos(6.28318*(uv.x*2.0 + uTime*0.2 + vec3(0.0,0.33,0.66)))) * uShift;
+
+  float streak = gr * uChroma;                       // 色収差ふうの横ストリーク
+  col.r += streak*0.15*step(0.5, fract(uv.x*3.0 + off*5.0));
+  col.b += streak*0.15*step(0.5, fract(uv.x*3.0 - off*5.0));
+
+  col += uScan*0.12*amt*(0.5+0.5*sin(uv.y*uResolution.y*1.5));   // 明るい走査線（加算）
+  col += step(0.985, noise(vec2(floor(uv.x*40.0)+t1, floor(uv.y*30.0)+t2))) * amt*0.6;  // スパークル
+  col += step(0.97, noise(vec2(mod(floor(uTime*10.0),512.0), 3.0))) * amt*0.25;          // 稀にフラッシュ
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const DEFAULT_ID = 'dQw4w9WgXcQ';  // 差し替え前提のサンプル
+function ytSrc(id){
+  return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&playsinline=1&modestbranding=1&rel=0`;
+}
+let iframe;
+
+const PARAMS = [
+  { key:'vid',    label:'YouTube動画ID', type:'text', value: DEFAULT_ID, placeholder:'例: dQw4w9WgXcQ' },
+  { key:'glitch', uniform:'uGlitch', label:'グリッチ強さ(常時)', type:'range', min:0, max:1, step:0.02, value:0.2 },
+  { key:'rows',   uniform:'uRows',   label:'割れの粗さ',       type:'range', min:4, max:80, step:1, value:24 },
+  { key:'shift',  uniform:'uShift',  label:'裂け目の量',       type:'range', min:0, max:3, step:0.1, value:1 },
+  { key:'chroma', uniform:'uChroma', label:'色ストリーク',     type:'range', min:0, max:4, step:0.1, value:1 },
+  { key:'scan',   uniform:'uScan',   label:'走査線',           type:'range', min:0, max:1, step:0.02, value:0.4 },
+];
+
+mount({
+  init(gl){
+    // 背景に YouTube iframe（canvas の手前に挿入＝canvas がその上に重なる）
+    iframe = document.createElement('iframe');
+    iframe.allow = 'autoplay; encrypted-media';
+    iframe.setAttribute('frameborder','0');
+    iframe.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;border:0;pointer-events:none;z-index:0';
+    iframe.src = ytSrc(DEFAULT_ID);
+    document.body.insertBefore(iframe, gl.canvas);
+
+    // canvas を screen 合成にし、黒は素通し（映像が見える）に
+    gl.clearColor(0, 0, 0, 1);
+    gl.canvas.style.mixBlendMode = 'screen';
+    gl.canvas.style.zIndex = '1';
+
+    const program = new Program(gl, { vertex: VERT_FULLSCREEN, fragment: PRECISION + frag, uniforms: {
+      uTime:{value:0}, uResolution:{value:new Vec2(1,1)}, uTilt:{value:new Vec2(0,0)},
+      uGlitch:{value:0.2}, uRows:{value:24}, uShift:{value:1}, uChroma:{value:1}, uScan:{value:0.4} }});
+    const st = { program, mesh: new Mesh(gl, { geometry: new Triangle(gl), program }) };
+
+    paramPanel(PARAMS, { title:'YT/グリッチ調整', onChange:(k, v) => {
+      if(k === 'vid'){ const id = String(v).trim(); if(id && iframe) iframe.src = ytSrc(id); return; }
+      const p = PARAMS.find(pp => pp.key === k); if(p && p.uniform) st.program.uniforms[p.uniform].value = v;
+    }});
+    return st;
+  },
+  resize(s, w, h){ s.program.uniforms.uResolution.value.set(w, h); },
+  draw(s, f){
+    s.program.uniforms.uTime.value = f.t;
+    s.program.uniforms.uTilt.value.set(f.tiltX, f.tiltY);
+    f.renderer.render({ scene: s.mesh });
+  },
+}, { title:'グリッチ・YouTube', subtitle:'YouTube背景＋グリッチ合成 / ⚙ で動画IDも変更' });
+</script>
+</body></html>

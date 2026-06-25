@@ -59,6 +59,7 @@ canvas{display:block;width:100vw;height:100vh;position:fixed;inset:0}
 #panel label span:last-child{color:#fff;font-variant-numeric:tabular-nums}
 #panel input[type=range]{width:100%;accent-color:#3fd6c2}
 #panel input[type=color]{width:100%;height:28px;border:1px solid #2d333f;border-radius:6px;background:none;padding:0}
+#panel input[type=text]{width:100%;background:#0e1218;border:1px solid #2d333f;border-radius:6px;color:#e8eaf0;padding:6px 8px;font-size:12px}
 #panel .pbtn{width:100%;font-size:12px;padding:7px 10px;margin-top:2px}
 `;
 
@@ -278,6 +279,11 @@ export function paramPanel(params, opts = {}) {
       input.value = (typeof init === 'string') ? (init[0] === '#' ? init : '#' + init) : p.value;
       values[p.key] = input.value; val.textContent = '';
       input.oninput = () => { values[p.key] = input.value; opts.onChange && opts.onChange(p.key, input.value); saveHash(); };
+    } else if (p.type === 'text') {
+      input.type = 'text'; if (p.placeholder) input.placeholder = p.placeholder;
+      input.value = (init == null) ? '' : String(init);
+      values[p.key] = input.value; val.textContent = '';
+      input.oninput = () => { values[p.key] = input.value; opts.onChange && opts.onChange(p.key, input.value); saveHash(); };
     } else { // range
       init = parseFloat(init); if (isNaN(init)) init = p.value;
       input.type = 'range'; input.min = p.min; input.max = p.max;
@@ -292,8 +298,9 @@ export function paramPanel(params, opts = {}) {
 
   function set(key, value) {
     const c = controls[key]; if (!c) return;
-    c.input.value = value; values[key] = (c.p.type === 'color') ? value : parseFloat(value);
-    if (c.p.type !== 'color') c.val.textContent = fmt(values[key], c.p);
+    c.input.value = value;
+    values[key] = (c.p.type === 'range') ? parseFloat(value) : value;
+    if (c.p.type === 'range') c.val.textContent = fmt(values[key], c.p);
     opts.onChange && opts.onChange(key, values[key]); saveHash();
   }
   return { values, get: k => values[k], set };
