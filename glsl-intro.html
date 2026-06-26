@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<meta name="description" content="GLSLフラグメントシェーダーの読み方入門。型・座標・組み込み関数・制御フロー・パレットの定番イディオムを、自作デモのコードで解説。">
+<title>GLSLの読み方入門</title>
+<link rel="stylesheet" href="note.css">
+</head><body>
+
+<nav class="topnav"><a href="learn.html">← 学習ノート</a> &nbsp;·&nbsp; <a href="./">デモ一覧</a></nav>
+
+<header class="pagehead">
+  <div class="eyebrow">学習ノート · 第2章</div>
+  <h1>GLSLの読み方入門</h1>
+  <p class="lede">シェーダーのコードは、慣れると「短い数式の集まり」として読める。ここでは、デモに出てくる書き方だけに絞って“読める”ようにする。書けることより、まず読めること。</p>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <div class="seclabel"><span class="n">A</span><span class="rule"></span></div>
+    <h2>まず雰囲気：C風で、型に厳しい</h2>
+    <p>GLSL は C によく似た小さな言語。大きな特徴が2つ。<strong>(1) 型に厳しい</strong>（<code class="inl">1</code> は整数、<code class="inl">1.0</code> は小数。混ぜると怒られる）。<strong>(2) ベクトルが基本型</strong>（座標も色も <code class="inl">vec</code>）。</p>
+    <figure class="code"><figcaption><span>型の基本</span><span class="tag">GLSL</span></figcaption><pre><code><span class="c-key">float</span> x = 1.0;            <span class="c-com">// 1 と書くと型エラー。必ず 1.0</span>
+<span class="c-key">vec2</span>  uv = <span class="c-fn">vec2</span>(0.5, 0.2); <span class="c-com">// 2成分（座標やサイズ）</span>
+<span class="c-key">vec3</span>  col = <span class="c-fn">vec3</span>(1.0);     <span class="c-com">// = vec3(1.0,1.0,1.0) 白</span>
+<span class="c-key">vec4</span>  rgba = <span class="c-fn">vec4</span>(col, 1.0);<span class="c-com">// vec3 + alpha</span></code></pre></figure>
+    <p><strong>swizzle（スウィズル）</strong>：成分は <code class="inl">.x .y .z .w</code> でも <code class="inl">.r .g .b .a</code> でも取れ、並べ替えもできる。</p>
+    <figure class="code"><figcaption><span>swizzle</span><span class="tag">GLSL</span></figcaption><pre><code>uv.x      <span class="c-com">// x成分</span>
+col.rgb   <span class="c-com">// 最初の3つ（=色）</span>
+v.yx      <span class="c-com">// x と y を入れ替えた vec2</span>
+d.xxy     <span class="c-com">// 好きに複製・並べ替え（vec3）</span></code></pre></figure>
+    <div class="keyline">ベクトルの計算は<strong>成分ごと（component-wise）</strong>。<code class="inl">vec3*vec3</code> は各成分の掛け算、<code class="inl">a+b</code> も各成分の足し算。だから色や座標を一気に処理できる。</div>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">B</span><span class="rule"></span></div>
+    <h2>座標の基本：ピクセル位置から uv を作る</h2>
+    <p>フラグメントシェーダーには <code class="inl">gl_FragCoord.xy</code>（いま計算中のピクセルのピクセル座標）が与えられる。これを使いやすい範囲に正規化するのが第一歩。デモでは主に2通り。</p>
+    <figure class="code"><figcaption><span>座標の正規化</span><span class="tag">GLSL</span></figcaption><pre><code><span class="c-com">// (1) 左下0,0 〜 右上1,1（テクスチャ向き）</span>
+vec2 uv = gl_FragCoord.xy / uResolution;
+
+<span class="c-com">// (2) 中心が0、縦を基準にアスペクト保持（図形向き）</span>
+vec2 uv = (gl_FragCoord.xy*2.0 - uResolution) / uResolution.y;</code></pre></figure>
+    <p>(2) は <a href="demos/ink.html">インク</a>や<a href="demos/kaleidoscope.html">万華鏡</a>で使う「中心0」座標。円や対称形を歪ませず描ける。(1) は<a href="demos/glitch.html">グリッチ</a>や<a href="demos/breakout.html">Breakout</a>のように画面全体を 0..1 で扱いたいときに使う。</p>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">C</span><span class="rule"></span></div>
+    <h2>よく出る組み込み関数</h2>
+    <p>シェーダーは関数のボキャブラリが命。デモに出てくるものだけ表にする。<strong>これだけ知れば大半が読める。</strong></p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>関数</th><th>意味</th><th>デモでの使い所</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inl">mix(a,b,t)</code></td><td>a と b を t(0→1)で線形補間</td><td>色の混合：根元色→先端色（ツリー）</td></tr>
+        <tr><td><code class="inl">clamp(x,lo,hi)</code></td><td>範囲に収める</td><td>色や値の暴走防止</td></tr>
+        <tr><td><code class="inl">step(e,x)</code></td><td>x≥e で 1、未満で 0（段差）</td><td>「この行だけ割れる」判定（グリッチ）</td></tr>
+        <tr><td><code class="inl">smoothstep(e0,e1,x)</code></td><td>e0→e1 でなめらかに 0→1</td><td>境界のアンチエイリアス・滲み（要 e0&lt;e1）</td></tr>
+        <tr><td><code class="inl">fract(x)</code></td><td>小数部（0..1 の繰り返し）</td><td>タイル化・ノイズ・万華鏡のセル</td></tr>
+        <tr><td><code class="inl">floor(x)</code> / <code class="inl">mod(x,y)</code></td><td>切り捨て / 剰余</td><td>セル番号・角度の折り返し</td></tr>
+        <tr><td><code class="inl">abs(x)</code></td><td>絶対値</td><td>ミラー（左右対称）</td></tr>
+        <tr><td><code class="inl">length(v)</code> / <code class="inl">distance(a,b)</code></td><td>長さ / 2点間距離</td><td>円・ボールのSDF、傾き量</td></tr>
+        <tr><td><code class="inl">normalize(v)</code> / <code class="inl">dot(a,b)</code></td><td>単位ベクトル化 / 内積</td><td>方向・線の太さの法線・ハッシュ</td></tr>
+        <tr><td><code class="inl">pow(x,y)</code></td><td>累乗</td><td>コントラスト（コースティクス）・先細り</td></tr>
+        <tr><td><code class="inl">sin/cos</code> / <code class="inl">atan(y,x)</code></td><td>三角関数 / 角度を求める</td><td>波・揺れ・パレット・極座標</td></tr>
+        <tr><td><code class="inl">texture2D(s,uv)</code></td><td>テクスチャから色を取る</td><td>反応拡散・カメラ・Breakoutのブロック状態</td></tr>
+      </tbody>
+    </table></div>
+    <h3>smoothstep は特に頻出</h3>
+    <p>「ある値をなめらかな 0→1 のフェードに変える」関数。境界をギザギザにせず描くのに使う。<code class="inl">step</code> は段差、<code class="inl">smoothstep</code> はなめらか、と覚える。</p>
+    <figure class="code"><figcaption><span>例</span><span class="tag">GLSL</span></figcaption><pre><code><span class="c-com">// r=半径。uBallR より内側を白く、境界をなめらかに（Breakoutのボール）</span>
+float fill = <span class="c-fn">smoothstep</span>(uBallR+0.004, uBallR, r);
+
+<span class="c-com">// ⚠ e0 &lt; e1 を守る。逆順は仕様上「未定義」（モバイルで壊れる）</span></code></pre></figure>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">D</span><span class="rule"></span></div>
+    <h2>色を作る定番：cos パレット</h2>
+    <p>デモのいたる所に出てくるこの1行。これは <strong>cos で3チャンネルの位相をずらして虹色を作る</strong>イディオム（IQ のパレット）。</p>
+    <figure class="code"><figcaption><span>palette</span><span class="tag">GLSL</span></figcaption><pre><code>vec3 col = 0.5 + 0.5*<span class="c-fn">cos</span>(6.28318*(t + <span class="c-fn">vec3</span>(0.0, 0.33, 0.66)));</code></pre></figure>
+    <ul>
+      <li><code class="inl">cos</code> は −1〜1 → <code class="inl">0.5+0.5*cos</code> で 0〜1（色の範囲）に収める</li>
+      <li><code class="inl">6.28318</code> = 2π。<code class="inl">t</code> が 1 増えると一周（色が一巡）</li>
+      <li><code class="inl">vec3(0, .33, .66)</code> で R・G・B の位相をずらす → 同じ <code class="inl">t</code> でも3色が違う位置 → 虹</li>
+      <li><code class="inl">t</code> に半径・時間・ノイズ値を入れると、それに応じて色が流れる</li>
+    </ul>
+    <p>デモの「パレット」「色」スライダーは、この <code class="inl">vec3(...)</code> の位相をいじっている。</p>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">E</span><span class="rule"></span></div>
+    <h2>制御フロー・入力・精度</h2>
+    <h3>if と for は使えるが…</h3>
+    <p>分岐もループも書けるが、<strong>ループの回数は基本「定数」</strong>にする（モバイルGPUの制約）。<code class="inl">discard;</code> はそのピクセルを描かずに捨てる（粒子を丸く切り抜くのに使用）。</p>
+    <figure class="code"><figcaption><span>particles.html</span><span class="tag">fragment</span></figcaption><pre><code>float d = <span class="c-fn">length</span>(gl_PointCoord - 0.5);
+<span class="c-key">if</span>(d &gt; 0.5) <span class="c-key">discard</span>;   <span class="c-com">// 円の外は描かない＝点を丸く</span></code></pre></figure>
+    <h3>入力 3種</h3>
+    <ul>
+      <li><strong>uniform</strong> … 全ピクセル共通。<code class="inl">uTime</code>（時間）, <code class="inl">uResolution</code>（解像度）, <code class="inl">uTilt</code>（傾き）, ⚙のパラメータ。JSから毎フレーム送る。</li>
+      <li><strong>attribute → varying</strong> … 頂点ごとの値が、ピクセルへ補間されて届く（例：粒子の <code class="inl">vLife</code>）。</li>
+      <li><strong>sampler2D + texture2D</strong> … 画像やデータをテクスチャとして読む。</li>
+    </ul>
+    <h3>precision（精度）宣言</h3>
+    <p>フラグメントシェーダーは先頭で精度を宣言する。<code class="inl">highp</code>（高精度）が使えない古い端末向けに、デモは保険を入れている（→ <a href="learn.html">学習ノートの「落とし穴」</a>参照）。</p>
+    <figure class="code"><figcaption><span>precision ガード</span><span class="tag">GLSL</span></figcaption><pre><code><span class="c-key">#ifdef</span> GL_FRAGMENT_PRECISION_HIGH
+  <span class="c-key">precision</span> highp float;
+<span class="c-key">#else</span>
+  <span class="c-key">precision</span> mediump float;
+<span class="c-key">#endif</span></code></pre></figure>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">F</span><span class="rule"></span></div>
+    <h2>“読む”ときの手順</h2>
+    <ol>
+      <li><strong>入力（uniform）を確認</strong>：何が外から入ってくるか</li>
+      <li><strong>座標 uv の作り方を見る</strong>：中心0か、0..1か</li>
+      <li><strong>main の最後 <code class="inl">gl_FragColor</code> から逆算</strong>：最終的に何色を出すか → その色がどう作られたか上にたどる</li>
+      <li><strong>関数（noise/fbm/box/pal 等）は“部品”として名前で理解</strong>：中身は後で</li>
+    </ol>
+    <p>この手順で、次の章では実際のデモを頭から読み解いていく。</p>
+    <div class="next">
+      <a href="walkthrough.html">各デモの逐行解説 →</a>
+      <a class="sub" href="learn.html">← 学習ノートに戻る</a>
+    </div>
+  </section>
+
+  <div class="foot">デモ一覧 → <a href="./">トップへ戻る</a></div>
+</div>
+</body></html>

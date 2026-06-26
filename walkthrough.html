@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<meta name="description" content="自作Shaderデモの逐行解説。インク・万華鏡・反応拡散をコードチャンクごとに読み解き、残りのデモは勘所を解説。">
+<title>各デモの逐行解説</title>
+<link rel="stylesheet" href="note.css">
+</head><body>
+
+<nav class="topnav"><a href="glsl-intro.html">← GLSL入門</a> &nbsp;·&nbsp; <a href="learn.html">学習ノート</a> &nbsp;·&nbsp; <a href="./">デモ一覧</a></nav>
+
+<header class="pagehead">
+  <div class="eyebrow">学習ノート · 第3章</div>
+  <h1>各デモの逐行解説</h1>
+  <p class="lede">実際のデモのコードを頭から読み解く。3本（インク・万華鏡・反応拡散）はチャンクごとに、残りは「勘所」だけを抜き出す。<a href="glsl-intro.html">GLSL入門</a>の関数表を隣に開いておくと読みやすい。</p>
+</header>
+
+<div class="wrap">
+
+  <!-- INK -->
+  <section>
+    <div class="seclabel"><span class="n">demo 1</span><span class="rule"></span></div>
+    <h2>インク — 全ピクセルがノイズで色を決める</h2>
+    <p><a href="demos/ink.html">ink.html</a>。フラグメントシェーダーの王道。「座標→ノイズ→色」を組み立てる。</p>
+
+    <div class="step"><pre><code>uniform float uTime;  uniform vec2 uResolution;  uniform vec2 uTilt;
+uniform float uWarp, uSpeed, uTiltK, uInk, uGlow;  uniform vec3 uBase, uTint;</code></pre>
+      <div class="note"><b>入力。</b> 時間・解像度・傾きに加え、⚙パラメータ（うねり量 <code class="inl">uWarp</code>、速度、傾き感度、インクの広がり、発光、地色、パレット）。</div></div>
+
+    <div class="step"><pre><code>float hash(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }</code></pre>
+      <div class="note"><b>疑似乱数。</b> 座標を入れると 0..1 のバラついた値が返る。<code class="inl">fract</code> と <code class="inl">dot</code> で散らす。<code class="inl">sin</code> を使わないのは<strong>モバイルで壊れにくくするため</strong>（学習ノートの落とし穴）。</div></div>
+
+    <div class="step"><pre><code>float noise(vec2 p){ vec2 i=floor(p), f=fract(p);
+  float a=hash(i), b=hash(i+vec2(1.0,0.0)), c=hash(i+vec2(0.0,1.0)), d=hash(i+vec2(1.0,1.0));
+  vec2 u=f*f*(3.0-2.0*f); return mix(mix(a,b,u.x), mix(c,d,u.x), u.y); }</code></pre>
+      <div class="note"><b>value noise。</b> 格子点（整数座標）の乱数を、間の位置 <code class="inl">f</code> でなめらかに補間。<code class="inl">f*f*(3.0-2.0*f)</code> は角を取る曲線。<code class="inl">mix</code> 3回で2次元補間。</div></div>
+
+    <div class="step"><pre><code>float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i&lt;5;i++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }</code></pre>
+      <div class="note"><b>fractal noise（雲）。</b> ノイズを「細かく・薄く」しながら5回重ねる（<code class="inl">p*=2</code>で倍の細かさ、<code class="inl">a*=0.5</code>で半分の濃さ）。これで自然な濃淡になる。</div></div>
+
+    <div class="step"><pre><code>vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318*(t + uTint)); }</code></pre>
+      <div class="note"><b>パレット。</b> <code class="inl">t</code> で虹色、<code class="inl">uTint</code> で色味を回す（<a href="glsl-intro.html">入門 D</a>）。</div></div>
+
+    <div class="step"><pre><code>vec2 uv = (gl_FragCoord.xy*2.0 - uResolution) / uResolution.y;
+float t = uTime * uSpeed;</code></pre>
+      <div class="note"><b>座標と時間。</b> 中心0・アスペクト保持の <code class="inl">uv</code>。<code class="inl">t</code> は速度付きの時間。</div></div>
+
+    <div class="step"><pre><code>vec2 q = vec2( fbm(uv + t),                fbm(uv + vec2(5.2,1.3) - t) );
+vec2 r = vec2( fbm(uv + uWarp*q + uTilt*uTiltK + vec2(1.7,9.2) + 0.15*t),
+               fbm(uv + uWarp*q + uTilt*uTiltK + vec2(8.3,2.8) - 0.12*t) );
+float f = fbm(uv + uWarp*1.25*r + uTilt*(uTiltK*0.5));</code></pre>
+      <div class="note"><b>domain warping＝うねりの核心。</b> まず <code class="inl">q</code> で <code class="inl">uv</code> を歪め、その結果 <code class="inl">r</code> でさらに歪め、最後に <code class="inl">f</code> を取る。「ノイズの座標をノイズでずらす」入れ子が、まっすぐでない有機的な流れを生む。<code class="inl">uTilt</code> を混ぜることで傾きが流れの向きに効く。</div></div>
+
+    <div class="step"><pre><code>vec3 inkCol = pal(f*0.6 + length(r)*0.35 + t*0.1);
+vec3 col = mix(uBase, inkCol, smoothstep(uInk, 0.9, f));</code></pre>
+      <div class="note"><b>色を置く。</b> <code class="inl">f</code> の値に応じて<strong>地色とインク色を混合</strong>。<code class="inl">smoothstep(uInk,0.9,f)</code> がインクの滲み境界（<code class="inl">uInk</code> で広がりを調整）。</div></div>
+
+    <div class="step"><pre><code>float edge = pow(1.0 - abs(f - 0.55)*2.0, 3.0);
+col += uGlow * edge * inkCol;
+float vig = 1.0 - 0.35*dot(uv*0.7, uv*0.7);
+col *= clamp(vig, 0.0, 1.0);
+gl_FragColor = vec4(col, 1.0);</code></pre>
+      <div class="note"><b>仕上げ。</b> <code class="inl">f≈0.55</code> の等高線だけを光らせて<strong>膜の縁の発光</strong>に。最後に <code class="inl">vig</code>（周辺減光）を掛けて出力。</div></div>
+  </section>
+
+  <!-- KALEIDOSCOPE -->
+  <section>
+    <div class="seclabel"><span class="n">demo 2</span><span class="rule"></span></div>
+    <h2>万華鏡 — 極座標と対称のトリック</h2>
+    <p><a href="demos/kaleidoscope.html">kaleidoscope.html</a>。座標を「角度と半径」で考えると、対称や回転が一気に書ける。</p>
+
+    <div class="step"><pre><code>mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+vec2 uv = (gl_FragCoord.xy*2.0 - uResolution) / uResolution.y;
+uv = rot(uTime*0.1*uSpeed + uTilt.x*1.5*uTiltK) * uv;</code></pre>
+      <div class="note"><b>全体を回す。</b> <code class="inl">rot</code> は回転行列。時間と傾きで <code class="inl">uv</code> 全体を回転させる。</div></div>
+
+    <div class="step"><pre><code>float a = atan(uv.y, uv.x);   // 角度（-π..π）
+float r = length(uv);         // 半径（中心からの距離）
+float span = 6.28318 / uSeg;  // 1セクタ分の角度</code></pre>
+      <div class="note"><b>極座標へ。</b> <code class="inl">atan</code> で角度、<code class="inl">length</code> で半径。<code class="inl">uSeg</code>（対称数）で円を何分割するか決める。</div></div>
+
+    <div class="step"><pre><code>a = mod(a, span);        // 角度を1セクタ内に畳む
+a = abs(a - span*0.5);   // セクタ中心でミラー → 対称</code></pre>
+      <div class="note"><b>これが万華鏡。</b> <code class="inl">mod</code> で角度をセクタ内に折り返し（＝同じ模様を放射状に複製）、<code class="inl">abs</code> でセクタ内も鏡像化。この2行だけで対称が生まれる。</div></div>
+
+    <div class="step"><pre><code>vec2 p = vec2(cos(a), sin(a)) * r;   // 畳んだ角度で座標に戻す
+p *= uScale;
+p += vec2(uTime*0.15*uSpeed, 0.0) + uTilt*0.6*uTiltK;</code></pre>
+      <div class="note"><b>模様用の座標。</b> 折り返した角度＋半径で xy に戻し、スケールと移動（時間・傾き）を加える。</div></div>
+
+    <div class="step"><pre><code>vec2 g = fract(p) - 0.5;   // タイル化：各セルの中心を0に
+float d = length(g);
+float ring = sin(d*uRingFreq - uTime*2.0*uSpeed);
+float edge = smoothstep(0.0, 0.12, abs(ring));</code></pre>
+      <div class="note"><b>セル内の模様。</b> <code class="inl">fract</code> で空間を格子に区切り、各セル中心からの距離 <code class="inl">d</code> に <code class="inl">sin</code> をかけて同心リングを作る。<code class="inl">uRingFreq</code> でリングの細かさ。</div></div>
+
+    <div class="step"><pre><code>vec3 col = 0.5 + 0.5*cos(6.28318*(r*0.5 + uTime*0.05*uSpeed + uTint));
+col *= 0.4 + 0.6*edge;
+col *= 1.0 - 0.25*r;
+gl_FragColor = vec4(col, 1.0);</code></pre>
+      <div class="note"><b>色。</b> 半径で虹色（<code class="inl">uTint</code> で色味）。リングの線 <code class="inl">edge</code> で明暗を付け、外周を少し暗く。</div></div>
+  </section>
+
+  <!-- REACTION-DIFFUSION -->
+  <section>
+    <div class="seclabel"><span class="n">demo 3</span><span class="rule"></span></div>
+    <h2>反応拡散 — 状態をテクスチャに持つシミュレーション</h2>
+    <p><a href="demos/reaction-diffusion.html">reaction-diffusion.html</a>。これまでと違い<strong>3つのパス</strong>を使う：種まき(SEED)→更新(SIM)→表示(DISP)。状態（2種の薬品 A・B の濃度）はテクスチャに保存し、毎フレーム更新する。</p>
+
+    <div class="step"><pre><code>// SEED：初期状態。A=1で全面、Bをまばらに置く
+float B = 0.0;
+if(hash(floor(vUv*10.0)) &gt; 0.93) B = 1.0;
+if(distance(vUv, vec2(0.5)) &lt; 0.04) B = 1.0;
+gl_FragColor = vec4(1.0, B, 0.0, 1.0);   // R=A, G=B</code></pre>
+      <div class="note"><b>種まきパス。</b> テクスチャの R チャンネルに A、G に B を入れる。最初は A=1（全面）に、B をまばらな点と中央に置く。</div></div>
+
+    <div class="step"><pre><code>// SIM：隣接セルを読む
+vec2 S(vec2 o){ return texture2D(uState, vUv + o*uTexel).xy; }
+vec2 lap = 0.2*(S(vec2(1,0))+S(vec2(-1,0))+S(vec2(0,1))+S(vec2(0,-1)))
+         + 0.05*(S(vec2(1,1))+S(vec2(-1,1))+S(vec2(1,-1))+S(vec2(-1,-1)))
+         - 1.0*c;</code></pre>
+      <div class="note"><b>ラプラシアン（拡散）。</b> <code class="inl">uTexel</code>＝1ピクセル分の幅。上下左右＋斜めの隣を読み、重み付き平均と中心の差をとる＝「まわりへ滲む量」。この係数（0.2 / 0.05 / -1）が<strong>標準値</strong>で、強すぎると“凍りつく”不具合になった箇所。</div></div>
+
+    <div class="step"><pre><code>float A = c.x, B = c.y;  float Da=1.0, Db=0.5;
+float reaction = A*B*B;
+float A2 = A + (Da*lap.x - reaction + uFeed*(1.0 - A));
+float B2 = B + (Db*lap.y + reaction - (uKill + uFeed)*B);</code></pre>
+      <div class="note"><b>反応（Gray-Scott）。</b> 「A + 2B → 3B」を <code class="inl">A*B*B</code> で表す。B は A を食べて増え（reaction）、一定割合で消え（kill）、A は供給される（feed）。<code class="inl">uFeed</code>/<code class="inl">uKill</code> の組で<strong>サンゴ・迷路・分裂など別模様</strong>になる。</div></div>
+
+    <div class="step"><pre><code>vec2 bp = vec2(0.5) + uTilt*0.4;
+if(distance(vUv, bp) &lt; uBrush) B2 = 1.0;                 // 傾きで動く筆
+if(h21(floor(vUv*200.0) + floor(uSeed*3.0)) &gt; 1.0 - uSeedRate) B2 = 1.0;  // 種まき（枯渇防止）
+gl_FragColor = vec4(clamp(A2,0.0,1.0), clamp(B2,0.0,1.0), 0.0, 1.0);</code></pre>
+      <div class="note"><b>入力と書き戻し。</b> 傾きの位置に B を足す（＝触ると模様が生える）。少量の自動種まきで枯渇を防止。<code class="inl">clamp</code> して次の状態を書き出す。</div></div>
+
+    <div class="step"><pre><code>// DISP：表示パス。B濃度を色に
+float Bv = texture2D(uState, vUv).y;
+float v = smoothstep(0.0, 0.35, Bv);
+vec3 col = mix(uColLo, uColHi, v) + smoothstep(0.25,0.5,Bv)*vec3(0.45,0.1,0.6);</code></pre>
+      <div class="note"><b>表示。</b> シミュレーション結果（B の濃度）を地色→模様色に変換するだけ。計算と見た目を分離している。</div></div>
+
+    <div class="step"><pre><code>// JS：ping-pong（2枚のテクスチャを交互に）
+for(let k=0;k&lt;s.steps;k++){
+  s.sim.uniforms.uState.value = s.rts[s.read].texture;          // 今の状態を読み
+  renderer.render({ scene: s.simMesh, target: s.rts[s.read ^ 1] }); // 次の状態を別テクスチャに書く
+  s.read ^= 1;                                                   // 読み書きを入れ替え
+}</code></pre>
+      <div class="note"><b>記憶の正体。</b> 同じテクスチャを読みながら書くことはできないので、<strong>2枚を用意して交互に</strong>使う（ping-pong）。これを1フレームで <code class="inl">steps</code> 回繰り返して時間を進める。<strong>「前の状態から次を作る」＝シミュレーション</strong>はこの構造で成り立つ。</div></div>
+  </section>
+
+  <!-- 勘所 -->
+  <section>
+    <div class="seclabel"><span class="n">demo 4-9</span><span class="rule"></span></div>
+    <h2>残りのデモ — 勘所だけ</h2>
+    <p>基本パターンは上の3本の組み合わせ。各デモで「新しく効いている1行」を抜き出す。</p>
+
+    <h3>トンネル <span class="muted" style="font-weight:400;font-size:13px">— 半径の逆数で奥行き</span></h3>
+    <figure class="code"><figcaption><span>tunnel.html</span><span class="tag">key</span></figcaption><pre><code>float depth = 1.0/(r+0.06) + uTime*uSpeed;   <span class="c-com">// 半径の逆数＝中心ほど“遠い”奥行き</span>
+vec2 circ = vec2(cos(a), sin(a));            <span class="c-com">// 角度を周期座標に（左の継ぎ目を消す）</span>
+col *= smoothstep(0.0, uHole, r);            <span class="c-com">// 中心を暗く＝吸い込まれる黒丸</span></code></pre></figure>
+    <p><code class="inl">1/r</code> が「遠近」を作るキモ。中心(r小)ほど depth が大きく＝遠くまで詰まって見える。</p>
+
+    <h3>コースティクス <span class="muted" style="font-weight:400;font-size:13px">— 反復で光の網</span></h3>
+    <figure class="code"><figcaption><span>caustics.html</span><span class="tag">key</span></figcaption><pre><code>for(int n=0;n&lt;5;n++){ i = p + vec2(cos(tt-i.x)+sin(tt+i.y), sin(tt-i.y)+cos(tt+i.x)); ... }
+vec3 col = vec3(pow(abs(c), uContrast));     <span class="c-com">// pow でコントラスト＝光の鋭さ</span></code></pre></figure>
+    <p>座標を <code class="inl">sin/cos</code> で繰り返し折り曲げて干渉模様を作り、<code class="inl">pow</code> で明暗を締める。<code class="inl">uContrast</code> が光の鋭さ。</p>
+
+    <h3>グリッチ <span class="muted" style="font-weight:400;font-size:13px">— 行ごとにズラす＋RGB別取り</span></h3>
+    <figure class="code"><figcaption><span>glitch.html / glitch-camera.html</span><span class="tag">key</span></figcaption><pre><code>float row = floor(uv.y * uRows);                         <span class="c-com">// 画面を横帯に分割</span>
+float gr  = step(0.7, noise(vec2(row, tSlow)));          <span class="c-com">// 一部の帯だけ「割れる」</span>
+col.r = scene(uv + vec2(sp,0.0)).r;  col.b = scene(uv - vec2(sp,0.0)).b;  <span class="c-com">// R/Bをずらして色収差</span></code></pre></figure>
+    <p>カメラ版は <code class="inl">scene()</code> が <code class="inl">texture2D(uTex, ...)</code>＝実映像。<strong>同じグリッチ式を、手続き模様にもカメラにもかけられる</strong>のがポイント。</p>
+
+    <h3>粒子 <span class="muted" style="font-weight:400;font-size:13px">— 頂点シェーダーで位置計算＋流れ場</span></h3>
+    <figure class="code"><figcaption><span>particles.html</span><span class="tag">vertex / fragment</span></figcaption><pre><code>vec2 flow(vec2 p){ float e=0.12;                          <span class="c-com">// ノイズの勾配を90°回す＝渦のある流れ場（curl風）</span>
+  return vec2(noise(p+vec2(0,e))-noise(p-vec2(0,e)), -(noise(p+vec2(e,0))-noise(p-vec2(e,0)))) / (2.0*e); }
+gl_PointSize = (2.0 + 3.0*sin(life*3.14159)) * uDpr * uSize;  <span class="c-com">// 点の大きさ（頂点側）</span>
+if(length(gl_PointCoord-0.5) &gt; 0.5) discard;                 <span class="c-com">// 点を丸く切り抜く（断片側）</span></code></pre></figure>
+
+    <h3>分岐ツリー <span class="muted" style="font-weight:400;font-size:13px">— JSで形を生成、GPUで太く描く</span></h3>
+    <figure class="code"><figcaption><span>branch-tree.html</span><span class="tag">JS生成 + vertex</span></figcaption><pre><code><span class="c-com">// JS：再帰で枝を生成（角度＝親角＋ランダム＋左右バイアス）</span>
+const na = ang + (Math.random()-0.5)*spread + (i-0.5)*0.2 + asym;
+<span class="c-com">// vertex：線分を四角形に太らせる（GL_LINESはモバイルで1px固定のため）</span>
+float taper = pow(max(1.0 - aDist, 0.0), uTaperPow);   <span class="c-com">// (1-世代)^k で幹太く先端細く</span>
+gl_Position = vec4(base + nrm*aSide*taper*uWidth, 0.0, 1.0);</code></pre></figure>
+    <p>形の生成は<strong>JS（再帰）</strong>、描画は<strong>GPU</strong>。役割分担の好例。</p>
+
+    <h3>Breakout <span class="muted" style="font-weight:400;font-size:13px">— SDF描画＋JSロジック＋データテクスチャ</span></h3>
+    <figure class="code"><figcaption><span>breakout.html</span><span class="tag">fragment + JS</span></figcaption><pre><code><span class="c-com">// GPU：矩形SDFでブロック/パドル、円でボールを描く</span>
+float box(vec2 p, vec2 b){ vec2 d=abs(p)-b; return length(max(d,0.0))+min(max(d.x,d.y),0.0); }
+float alive = texture2D(uBricks, vec2((ci+0.5)/COLS,(ri+0.5)/ROWS)).r;  <span class="c-com">// 生死をテクスチャから</span>
+<span class="c-com">// JS：当たり判定で壊し、テクスチャを更新</span>
+data[idx*4]=0; s.tex.needsUpdate=true; s.score+=10; s.vy=-s.vy;</code></pre></figure>
+    <p>描画はシェーダー、物理・スコアは JS、ブロックの状態は<strong>データテクスチャ</strong>でGPUへ。<a href="learn.html">学習ノート</a>の「ハイブリッド」そのもの。</p>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">end</span><span class="rule"></span></div>
+    <h2>読めたら、次は変えてみる</h2>
+    <p>各デモの右上「⚙」で、ここに出た <code class="inl">uWarp</code> / <code class="inl">uSeg</code> / <code class="inl">uFeed</code> / <code class="inl">uContrast</code> などがそのまま動く。<strong>コードの数字とスライダーが1対1で対応している</strong>ので、「この行を動かすとこう変わる」を体で覚えられる。値はURLに保存されるので、良い見た目はブックマークで残せる。</p>
+    <div class="next">
+      <a href="./">デモ一覧へ →</a>
+      <a class="sub" href="learn.html">学習ノート</a>
+      <a class="sub" href="glsl-intro.html">GLSL入門</a>
+    </div>
+  </section>
+
+  <div class="foot">デモ一覧 → <a href="./">トップへ戻る</a></div>
+</div>
+</body></html>

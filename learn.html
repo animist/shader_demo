@@ -5,75 +5,7 @@
 <meta name="theme-color" content="#0b0e14">
 <meta name="description" content="自作のモバイルShaderデモを例に、Shaderの本質・得意な表現・他の描画手法との利害得失を解説する学習ノート。">
 <title>Shaderとは何か — 作ったデモで学ぶ</title>
-<style>
-  :root{
-    --bg:#0b0e14; --surface:#141a26; --surface2:#10151f; --line:#232c3b;
-    --ink:#dfe4ee; --muted:#8b94a7; --teal:#3fd6c2; --violet:#c46bff; --amber:#ffb454;
-    --maxw:740px;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
-    line-height:1.78;font-size:15.5px;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
-  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
-
-  .hero{position:relative;min-height:62vh;display:flex;align-items:flex-end;overflow:hidden;border-bottom:1px solid var(--line)}
-  #herofx{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0}
-  .hero .veil{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(11,14,20,.25) 0%,rgba(11,14,20,.72) 70%,var(--bg) 100%)}
-  .hero .inner{position:relative;z-index:2;width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px 40px}
-  .eyebrow{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--teal);font-weight:700}
-  h1{font-size:clamp(30px,6.5vw,46px);line-height:1.12;margin:.32em 0 .2em;font-weight:800;letter-spacing:.005em;text-wrap:balance}
-  .lede{color:#c3cad8;font-size:16.5px;max-width:60ch;margin:0}
-
-  section{padding:46px 0 8px}
-  .seclabel{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-  .seclabel .n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
-  .seclabel .rule{height:2px;flex:1;border-radius:2px;background:linear-gradient(90deg,var(--teal),var(--violet) 60%,transparent)}
-  h2{font-size:23px;font-weight:800;margin:.1em 0 .5em;letter-spacing:.01em;text-wrap:balance}
-  h3{font-size:16px;font-weight:800;margin:1.4em 0 .3em}
-  p{margin:.6em 0}
-  a{color:var(--teal);text-decoration:none;border-bottom:1px solid rgba(63,214,194,.3)}
-  a:hover{border-bottom-color:var(--teal)}
-  a:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
-  strong{color:#fff;font-weight:700}
-  .muted{color:var(--muted)}
-
-  .topnav{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;padding:14px 20px 0}
-  .topnav a{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--muted);border-bottom:none}
-  .topnav a:hover{color:var(--teal)}
-
-  .keyline{border-left:3px solid var(--teal);background:var(--surface2);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:15px}
-  .keyline.amber{border-left-color:var(--amber)}
-  .keyline b{color:#fff}
-
-  figure.code{margin:16px 0;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--surface2)}
-  figure.code figcaption{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted);background:#0c1119;padding:7px 13px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;letter-spacing:.03em}
-  figure.code figcaption .tag{color:var(--teal)}
-  pre{margin:0;padding:13px 15px;overflow-x:auto}
-  pre code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;line-height:1.65;color:#cdd6e6;white-space:pre}
-  .c-com{color:#5f93b0;font-style:italic} .c-key{color:#ff9ad2} .c-fn{color:#7fe0cf}
-
-  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
-  @media(max-width:560px){.cards{grid-template-columns:1fr}}
-  .card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--surface)}
-  .card .h{font-weight:800;font-size:15px;margin-bottom:3px}
-  .card .d{font-size:13.5px;color:var(--muted);line-height:1.6}
-
-  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:16px 0}
-  table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
-  th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
-  thead th{background:#0c1119;color:var(--ink);font-weight:800;font-size:12.5px;letter-spacing:.02em}
-  tbody tr:last-child td{border-bottom:none}
-  td .m{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted)}
-  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;font-family:ui-monospace,Menlo,Consolas,monospace}
-  .pill.t{color:#06120f;background:var(--teal)} .pill.v{color:#160a1f;background:var(--violet)}
-
-  ul{margin:.5em 0;padding-left:1.25em} li{margin:.35em 0}
-  .foot{border-top:1px solid var(--line);margin-top:40px;padding:26px 0 60px;color:var(--muted);font-size:13.5px}
-  .foot a{font-weight:700}
-  @media (prefers-reduced-motion: reduce){ #herofx{opacity:.9} }
-</style>
+<link rel="stylesheet" href="note.css">
 </head><body>
 
 <nav class="topnav"><a href="./">← デモ一覧</a></nav>
@@ -202,7 +134,14 @@ float B2 = B + (Db*lap.y + A*B*B - (kill + feed)*B);</code></pre></figure>
       <b>向く：</b>ピクセル単位の手続き表現・大量反復・3D・シミュレーション・エフェクト。<br>
       <b>向かない：</b>複雑なロジック・テキスト/UI・正確な対話・デバッグの容易さ。<br>
       <b>実務：</b>描画はShader、ロジックはJS。そして<b>必ず実機で確かめる</b>（精度・発熱は数式の外にある）。</div>
-    <p class="muted">この学びはすべて、一緒に作った9＋デモ（インク／万華鏡／反応拡散／トンネル／コースティクス／グリッチ／粒子／分岐ツリー／Breakout…）の実装と、その過程で踏んだ不具合から来ている。コードを読み返すと、ここに書いた原則が手触りとして見えるはず。</p>
+    <p class="muted">この学びはすべて、一緒に作った9＋デモ（インク／万華鏡／反応拡散／トンネル／コースティクス／グリッチ／粒子／分岐ツリー／Breakout…）の実装と、その過程で踏んだ不具合から来ている。</p>
+
+    <h3>続けて読む</h3>
+    <p>もう一歩踏み込んで、コードを自分で読めるようになる2章を用意した。</p>
+    <div class="next">
+      <a href="glsl-intro.html">GLSLの読み方入門 →</a>
+      <a href="walkthrough.html">各デモの逐行解説 →</a>
+    </div>
   </section>
 
   <div class="foot">
