@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<meta name="description" content="自作のモバイルShaderデモを例に、Shaderの本質・得意な表現・他の描画手法との利害得失を解説する学習ノート。">
+<title>Shaderとは何か — 作ったデモで学ぶ</title>
+<style>
+  :root{
+    --bg:#0b0e14; --surface:#141a26; --surface2:#10151f; --line:#232c3b;
+    --ink:#dfe4ee; --muted:#8b94a7; --teal:#3fd6c2; --violet:#c46bff; --amber:#ffb454;
+    --maxw:740px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    line-height:1.78;font-size:15.5px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  .hero{position:relative;min-height:62vh;display:flex;align-items:flex-end;overflow:hidden;border-bottom:1px solid var(--line)}
+  #herofx{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0}
+  .hero .veil{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(11,14,20,.25) 0%,rgba(11,14,20,.72) 70%,var(--bg) 100%)}
+  .hero .inner{position:relative;z-index:2;width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px 40px}
+  .eyebrow{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--teal);font-weight:700}
+  h1{font-size:clamp(30px,6.5vw,46px);line-height:1.12;margin:.32em 0 .2em;font-weight:800;letter-spacing:.005em;text-wrap:balance}
+  .lede{color:#c3cad8;font-size:16.5px;max-width:60ch;margin:0}
+
+  section{padding:46px 0 8px}
+  .seclabel{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .seclabel .n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+  .seclabel .rule{height:2px;flex:1;border-radius:2px;background:linear-gradient(90deg,var(--teal),var(--violet) 60%,transparent)}
+  h2{font-size:23px;font-weight:800;margin:.1em 0 .5em;letter-spacing:.01em;text-wrap:balance}
+  h3{font-size:16px;font-weight:800;margin:1.4em 0 .3em}
+  p{margin:.6em 0}
+  a{color:var(--teal);text-decoration:none;border-bottom:1px solid rgba(63,214,194,.3)}
+  a:hover{border-bottom-color:var(--teal)}
+  a:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
+  strong{color:#fff;font-weight:700}
+  .muted{color:var(--muted)}
+
+  .topnav{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;padding:14px 20px 0}
+  .topnav a{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--muted);border-bottom:none}
+  .topnav a:hover{color:var(--teal)}
+
+  .keyline{border-left:3px solid var(--teal);background:var(--surface2);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:15px}
+  .keyline.amber{border-left-color:var(--amber)}
+  .keyline b{color:#fff}
+
+  figure.code{margin:16px 0;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--surface2)}
+  figure.code figcaption{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted);background:#0c1119;padding:7px 13px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;letter-spacing:.03em}
+  figure.code figcaption .tag{color:var(--teal)}
+  pre{margin:0;padding:13px 15px;overflow-x:auto}
+  pre code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;line-height:1.65;color:#cdd6e6;white-space:pre}
+  .c-com{color:#5f93b0;font-style:italic} .c-key{color:#ff9ad2} .c-fn{color:#7fe0cf}
+
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+  @media(max-width:560px){.cards{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--surface)}
+  .card .h{font-weight:800;font-size:15px;margin-bottom:3px}
+  .card .d{font-size:13.5px;color:var(--muted);line-height:1.6}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:16px 0}
+  table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+  th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:#0c1119;color:var(--ink);font-weight:800;font-size:12.5px;letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:none}
+  td .m{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .pill.t{color:#06120f;background:var(--teal)} .pill.v{color:#160a1f;background:var(--violet)}
+
+  ul{margin:.5em 0;padding-left:1.25em} li{margin:.35em 0}
+  .foot{border-top:1px solid var(--line);margin-top:40px;padding:26px 0 60px;color:var(--muted);font-size:13.5px}
+  .foot a{font-weight:700}
+  @media (prefers-reduced-motion: reduce){ #herofx{opacity:.9} }
+</style>
+</head><body>
+
+<nav class="topnav"><a href="./">← デモ一覧</a></nav>
+
+<div class="hero">
+  <canvas id="herofx"></canvas>
+  <div class="veil"></div>
+  <div class="inner">
+    <div class="eyebrow">GPU Graphics · 学習ノート</div>
+    <h1>Shaderとは何か</h1>
+    <p class="lede">— 作ったモバイルデモを題材に、その正体・得意な表現・他の描画手法との利害得失を整理する。背景は本物のフラグメントシェーダーが毎フレーム描いている。</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <div class="seclabel"><span class="n">01</span><span class="rule"></span></div>
+    <h2>一言でいうと「1ピクセルの色を決める関数」</h2>
+    <p>Shader（シェーダー）は <strong>GPU 上で動く小さなプログラム</strong>。最も使う<strong>フラグメントシェーダー</strong>の本質は、こうだ：</p>
+    <div class="keyline">「画面のある1ピクセルは、いま何色か？」を計算する関数を書く。すると <b>GPU がその関数を全ピクセルで“同時に”実行する。</b></div>
+    <p>ここが普通のプログラムと根本的に違う。CPU の描画はふつう「オブジェクトを1個ずつ、順番に」処理する。シェーダーは逆で、<strong>あなたはピクセル1個分のロジックだけを書き、並列実行は GPU が引き受ける</strong>。数百万ピクセルが毎フレーム並列で走る前提なので、考え方が「手順」から「各点の数式」へ変わる。</p>
+    <p>このデモ集の<a href="demos/ink.html">インク</a>は、まさに全ピクセルが「自分の座標をノイズ関数に入れて色を決める」だけで、あの有機的なうねりを生んでいる。3Dモデルも画像もなく、<strong>数式だけ</strong>だ。</p>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">02</span><span class="rule"></span></div>
+    <h2>2種類のシェーダーと、入力の渡し方</h2>
+    <ul>
+      <li><strong>頂点シェーダー（vertex）</strong>… 頂点ごとに位置を計算。「どこに置くか」。</li>
+      <li><strong>フラグメントシェーダー（fragment）</strong>… ピクセルごとに色を計算。「何色か」。1描画あたりの実行回数が桁違いに多く、ここが負荷の主役。</li>
+    </ul>
+    <p>プログラムへの入力は3経路：<strong>uniform</strong>（全ピクセル共通の変数。時間や傾きなど）／ <strong>attribute・varying</strong>（頂点ごとの値と、その補間）／ <strong>texture</strong>（画像・データ）。たとえば<a href="demos/particles.html">粒子</a>は、頂点シェーダーが1点ごとに「流れ場に沿った位置」を計算している——CPUで数万点をループするのではなく、GPUが全点を同時に解く。</p>
+    <figure class="code"><figcaption><span>particles.html</span><span class="tag">vertex shader</span></figcaption><pre><code><span class="c-com">// 1つの粒子の位置を、流れ場をたどってGPUで計算（全点が並列）</span>
+<span class="c-key">for</span>(int i=0;i&lt;10;i++){
+  pos += <span class="c-fn">flow</span>(pos*uFlowScale + uTime*0.05) * uFlowStep * life;
+}
+gl_Position = <span class="c-fn">vec4</span>(pos, 0.0, 1.0);</code></pre></figure>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">03</span><span class="rule"></span></div>
+    <h2>何に向いているか</h2>
+    <p>「全点を並列に・数式で」という性質が活きる領域がそのまま得意分野になる。デモごとに対応づけるとこうだ。</p>
+
+    <h3>① 手続き的なピクセル表現（ノイズ・流体・グラデ）</h3>
+    <p>座標を入れると模様が返る関数を重ねる。<a href="demos/ink.html">インク</a>の“うねり”の正体は <strong>domain warping</strong>＝「ノイズでノイズの座標を歪める」。</p>
+    <figure class="code"><figcaption><span>ink.html</span><span class="tag">fragment shader</span></figcaption><pre><code>vec2 q = <span class="c-fn">vec2</span>( <span class="c-fn">fbm</span>(uv + t),        <span class="c-fn">fbm</span>(uv + 5.2 - t) );
+vec2 r = <span class="c-fn">vec2</span>( <span class="c-fn">fbm</span>(uv + uWarp*q + ...), <span class="c-fn">fbm</span>(uv + uWarp*q + ...) );
+float f = <span class="c-fn">fbm</span>(uv + uWarp*1.25*r);   <span class="c-com">// ノイズの入れ子＝有機的なうねり</span></code></pre></figure>
+
+    <h3>② 数式で「形」を描く（SDF・対称・レイマーチ）</h3>
+    <p>形を「その点が図形の内か外か・どれだけ近いか」の距離関数（SDF）で表す。解像度に依存せず、拡大しても破綻しない。<a href="demos/kaleidoscope.html">万華鏡</a>は角度を折り返して対称を、<a href="demos/tunnel.html">トンネル</a>は奥行きを数式で作る。</p>
+    <figure class="code"><figcaption><span>kaleidoscope.html / breakout.html</span><span class="tag">GLSL</span></figcaption><pre><code><span class="c-com">// 角度を折り返して対称をつくる（万華鏡）</span>
+float a = <span class="c-fn">atan</span>(uv.y, uv.x);
+a = <span class="c-fn">mod</span>(a, span);  a = <span class="c-fn">abs</span>(a - span*0.5);
+
+<span class="c-com">// 矩形の距離関数（SDF）— Breakoutのブロック/パドル描画に使用</span>
+float <span class="c-fn">box</span>(vec2 p, vec2 b){ vec2 d=<span class="c-fn">abs</span>(p)-b; <span class="c-key">return</span> <span class="c-fn">length</span>(<span class="c-fn">max</span>(d,0.0))+<span class="c-fn">min</span>(<span class="c-fn">max</span>(d.x,d.y),0.0); }</code></pre></figure>
+
+    <h3>③ 大量の繰り返し</h3>
+    <p>数万の粒子、全ピクセルのエフェクト——「同じ処理を大量に」はGPUの独擅場。<a href="demos/particles.html">粒子</a>の数は ⚙ で 6万まで上げても破綻しにくい。</p>
+
+    <h3>④ GPU上のシミュレーション（状態をテクスチャに持つ）</h3>
+    <p>「前フレームの状態」をテクスチャに保存し、シェーダーで次の状態を書く（ping-pong）。これで<strong>記憶を持って進化する</strong>系が作れる。<a href="demos/reaction-diffusion.html">反応拡散</a>の生命感はこれ。強い手応えの源泉だ。</p>
+    <figure class="code"><figcaption><span>reaction-diffusion.html</span><span class="tag">simulation pass</span></figcaption><pre><code><span class="c-com">// 隣のセルを読み（拡散）、反応式で次の濃度を書く。これを毎フレーム反復</span>
+float A2 = A + (Da*lap.x - A*B*B + feed*(1.0 - A));
+float B2 = B + (Db*lap.y + A*B*B - (kill + feed)*B);</code></pre></figure>
+
+    <h3>⑤ リアルタイムのエフェクト・合成</h3>
+    <p>映像や前段の描画に対し、ピクセル単位で歪み・色収差・グローをかける。<a href="demos/glitch-camera.html">グリッチ・カメラ</a>はカメラ映像をテクスチャ化して実際に歪ませている。</p>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">04</span><span class="rule"></span></div>
+    <h2>苦手なこと・落とし穴</h2>
+    <p>万能ではない。むしろ「並列・数式」から外れるほど辛い。ここは<strong>このデモ制作で実際に踏んだ事例</strong>で示す。</p>
+    <div class="cards">
+      <div class="card"><div class="h">複雑なロジック・状態管理</div><div class="d">分岐・可変長データ・順序のある処理は苦手。Breakoutは物理と当たり判定・スコアを<strong>JS側</strong>に置いた。シェーダーは描画専任。</div></div>
+      <div class="card"><div class="h">テキスト・UI・正確な対話</div><div class="d">文字やボタンはDOMの仕事。Breakoutのスコア表示もHTML要素で出している。</div></div>
+      <div class="card"><div class="h">デバッグが難しい</div><div class="d"><span class="mono">print</span>できない。コンパイル失敗は<strong>ただの黒画面</strong>。グリッチが真っ黒だった原因は変数名 <span class="mono">gl_line</span>（<span class="mono">gl_</span>は予約語）だった。</div></div>
+      <div class="card"><div class="h">端末差・精度（precision）</div><div class="d">PCで動いてもモバイルで壊れる。<span class="mono">sin</span>ベースのハッシュがAndroidで破綻、<span class="mono">mediump</span>のオーバーフロー…<strong>実機テスト必須</strong>。</div></div>
+      <div class="card"><div class="h">数値的な不安定さ</div><div class="d">反応拡散は拡散係数が強すぎて“凍りつく”不具合に。シミュレーション系はパラメータの安定領域がシビア。</div></div>
+      <div class="card"><div class="h">GPUの物理制約</div><div class="d">線の太さ（<span class="mono">GL_LINES</span>）はモバイルで1px固定。分岐ツリーは太さを出すため<strong>四角形描画</strong>に作り替えた。発熱・fillrateも常に意識。</div></div>
+    </div>
+    <figure class="code"><figcaption><span>engine.js（全デモ共通）</span><span class="tag">precision ガード</span></figcaption><pre><code><span class="c-com">// 古い/安価な端末は fragment の highp 非対応 → mediump へ退避する保険</span>
+<span class="c-key">#ifdef</span> GL_FRAGMENT_PRECISION_HIGH
+  <span class="c-key">precision</span> highp float;
+<span class="c-key">#else</span>
+  <span class="c-key">precision</span> mediump float;
+<span class="c-key">#endif</span></code></pre></figure>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">05</span><span class="rule"></span></div>
+    <h2>Shaderを使わない描画手法との比較</h2>
+    <p>Webで絵を出す主な手段は4つ。<strong>データの持ち方</strong>が性格を決める。</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>手法</th><th>データモデル</th><th>得意</th><th>苦手</th></tr></thead>
+      <tbody>
+        <tr><td><strong>DOM / CSS</strong></td><td class="m">要素ツリー</td><td>UI・テキスト・レイアウト・アクセシビリティ</td><td>大量描画・連続的な変形</td></tr>
+        <tr><td><strong>SVG</strong></td><td class="m">ベクター図形ツリー</td><td>解像度非依存の図形・アイコン・図表</td><td>数千要素超で重い・ピクセル効果</td></tr>
+        <tr><td><strong>Canvas 2D</strong></td><td class="m">命令的ラスタ（CPU）</td><td>自由な2D描画・中規模アニメ・可視化</td><td>超大量・GPU並列効果・3D</td></tr>
+        <tr><td><strong>WebGL / Shader</strong></td><td class="m">GPU並列</td><td>ピクセル単位・大量・3D・シミュレーション・エフェクト</td><td>ロジック・テキスト・正確なUI・デバッグ</td></tr>
+      </tbody>
+    </table></div>
+    <div class="keyline"><b>使い分けの目安：</b> 「要素が少なく・意味のある部品（ボタン/文字/図形）」なら DOM・SVG・Canvas。「要素が数千超・ピクセル単位・連続変形・3D・シミュレーション」なら Shader。<b>境界では“描画はShader / ロジックはJS”の併用</b>が最も現実的。</div>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">06</span><span class="rule"></span></div>
+    <h2>現実解はハイブリッド</h2>
+    <p>「全部シェーダー」も「全部CPU」も極端で、実務の多くは<strong>役割分担</strong>に落ち着く。<a href="demos/breakout.html">Breakout</a>がその縮図だ：</p>
+    <ul>
+      <li><span class="pill t">GPU</span> 盤面（ブロック・パドル・ボール）を1枚のフラグメントシェーダーで SDF＋グロー描画</li>
+      <li><span class="pill v">CPU/JS</span> ボール物理・当たり判定・スコア・ライフなどの<strong>ロジック</strong></li>
+      <li><span class="pill t">GPU</span> ブロックの生死は<strong>データテクスチャ</strong>でGPUへ渡す（壊れたら更新）</li>
+    </ul>
+    <p>three.js などのWebGLゲームも基本はこの形——シェーダーは見た目とエフェクト、ロジックはJS。<strong>「並列で得なところだけGPUに渡す」</strong>のがコツ。</p>
+  </section>
+
+  <section>
+    <div class="seclabel"><span class="n">07</span><span class="rule"></span></div>
+    <h2>まとめ — 判断の指針</h2>
+    <div class="keyline">Shaderは <b>「各点の色/位置を数式で決め、GPUが並列実行する」</b> 道具。<br>
+      <b>向く：</b>ピクセル単位の手続き表現・大量反復・3D・シミュレーション・エフェクト。<br>
+      <b>向かない：</b>複雑なロジック・テキスト/UI・正確な対話・デバッグの容易さ。<br>
+      <b>実務：</b>描画はShader、ロジックはJS。そして<b>必ず実機で確かめる</b>（精度・発熱は数式の外にある）。</div>
+    <p class="muted">この学びはすべて、一緒に作った9＋デモ（インク／万華鏡／反応拡散／トンネル／コースティクス／グリッチ／粒子／分岐ツリー／Breakout…）の実装と、その過程で踏んだ不具合から来ている。コードを読み返すと、ここに書いた原則が手触りとして見えるはず。</p>
+  </section>
+
+  <div class="foot">
+    デモ一覧 → <a href="./">トップへ戻る</a><br>
+    各デモの右上「⚙」でパラメータを変えると、上の原則がそのまま挙動に効くのが体感できます。
+  </div>
+</div>
+
+<script>
+(function(){
+  var cv = document.getElementById('herofx');
+  var gl = cv.getContext('webgl') || cv.getContext('experimental-webgl');
+  if(!gl){ cv.style.background='radial-gradient(120% 120% at 30% 20%,#16424a,#0b0e14 60%)'; return; }
+  var vs = 'attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }';
+  var fs = [
+    'precision mediump float;',
+    'uniform float t; uniform vec2 res;',
+    'float hash(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }',
+    'float noise(vec2 p){ vec2 i=floor(p),f=fract(p); float a=hash(i),b=hash(i+vec2(1.0,0.0)),c=hash(i+vec2(0.0,1.0)),d=hash(i+vec2(1.0,1.0));',
+    '  vec2 u=f*f*(3.0-2.0*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }',
+    'float fbm(vec2 p){ float v=0.0,a=0.5; for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }',
+    'void main(){',
+    '  vec2 uv=(gl_FragCoord.xy*2.0-res)/res.y;',
+    '  float tt=t*0.05;',
+    '  vec2 q=vec2(fbm(uv+tt), fbm(uv+vec2(5.2,1.3)-tt));',
+    '  vec2 r=vec2(fbm(uv+1.6*q+vec2(1.7,9.2)+0.15*tt), fbm(uv+1.6*q+vec2(8.3,2.8)-0.12*tt));',
+    '  float f=fbm(uv+2.0*r);',
+    '  vec3 base=vec3(0.03,0.05,0.08);',
+    '  vec3 ink=0.5+0.5*cos(6.28318*(f*0.6+length(r)*0.35+vec3(0.55,0.42,0.30)));',
+    '  vec3 col=mix(base, ink, smoothstep(0.25,0.9,f));',
+    '  col+=0.16*pow(1.0-abs(f-0.55)*2.0,3.0)*ink;',
+    '  gl_FragColor=vec4(col,1.0);',
+    '}'
+  ].join('\n');
+  function sh(type,src){ var s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){ console.warn(gl.getShaderInfoLog(s)); } return s; }
+  var pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(pr); gl.useProgram(pr);
+  var buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 3,-1, -1,3]),gl.STATIC_DRAW);
+  var loc=gl.getAttribLocation(pr,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  var uT=gl.getUniformLocation(pr,'t'), uR=gl.getUniformLocation(pr,'res');
+  function size(){ var dpr=Math.min(window.devicePixelRatio||1,1.5); cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr; gl.viewport(0,0,cv.width,cv.height); }
+  size(); window.addEventListener('resize',size);
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function frame(ms){ gl.uniform1f(uT, reduce?12.0:ms*0.001); gl.uniform2f(uR, cv.width, cv.height); gl.drawArrays(gl.TRIANGLES,0,3); if(!reduce) requestAnimationFrame(frame); }
+  if(reduce){ frame(12000); } else { requestAnimationFrame(frame); }
+})();
+</script>
+</body></html>
