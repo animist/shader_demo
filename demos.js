@@ -15,6 +15,8 @@ export const DEMOS = [
     thumb:'radial-gradient(circle at 50% 50%,#0a0c10 0%,#1a4a7a 60%,#3fd6c2 100%)' },
   { file:'caustics', title:'水中コースティクス', cat:'光', desc:'光・透明・癒し',
     thumb:'repeating-linear-gradient(45deg,#0a2a33 0 8px,#1d6b7a 8px 12px,#5fe0e8 12px 14px,#0a2a33 14px 22px)' },
+  { file:'caustics-creature', title:'水中の生き物', cat:'光', desc:'泳ぐ何かが光を屈折・波紋（タッチ/傾き操作）',
+    thumb:'repeating-linear-gradient(45deg,#06222b 0 8px,#1d6b7a 8px 12px,#5fe0e8 12px 14px,#06222b 14px 22px),radial-gradient(22px 14px at 55% 50%,#bff6ff,transparent)' },
   { file:'glitch', title:'デジタル・グリッチ', cat:'合成', desc:'合成・サイバー',
     thumb:'repeating-linear-gradient(0deg,#100016 0 3px,#2a0a3a 3px 4px),linear-gradient(90deg,#ff2a6d55,#05d9e855,#d300c555)' },
   { file:'glitch-camera', title:'グリッチ・カメラ', cat:'合成', desc:'カメラ映像を本当に歪ませる（要カメラ許可）',

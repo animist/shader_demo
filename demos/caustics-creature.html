@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#04141a">
+<title>水中の生き物（コースティクス）</title>
+</head><body>
+<script type="module">
+import { mount, paramPanel, PRECISION, VERT_FULLSCREEN, Program, Mesh, Triangle, Vec2, hexToRGBArr } from '../engine.js';
+
+// 水中コースティクスに「泳ぐ何か」を重ねる。生き物の周りで光が屈折し、後方に波紋が広がる。
+const frag = `
+uniform float uTime; uniform vec2 uResolution;
+uniform float uSpeed, uScale, uContrast; uniform vec3 uTint;
+uniform vec2 uPos, uVel; uniform float uSize, uRefract, uGlow;
+varying vec2 vUv;
+
+vec3 caustic(vec2 uv){
+  float t = uTime*uSpeed + 23.0;
+  vec2 p = mod(uv*6.28318*uScale, 6.28318) - 250.0;
+  vec2 i = p; float c = 1.0; float inten = 0.005;
+  for(int n=0;n<5;n++){
+    float tt = t*(1.0 - (3.5/float(n+1)));
+    i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+    c += 1.0/length(vec2(p.x/(sin(i.x+tt)/inten), p.y/(cos(i.y+tt)/inten)));
+  }
+  c /= 5.0; c = 1.17 - pow(c, 1.4);
+  vec3 col = vec3(pow(abs(c), uContrast));
+  return clamp(col + uTint, 0.0, 1.0);
+}
+
+void main(){
+  float aspect = uResolution.x/uResolution.y;
+  vec2 uv = gl_FragCoord.xy / uResolution.xy;
+  vec2 d = uv - uPos; d.x *= aspect;          // 生き物からの相対位置（真円基準）
+  float dist = length(d);
+
+  // 屈折：生き物の周りで光を外へ押し出す（近いほど強い）
+  float lens = exp(-dist * 6.0);
+  vec2 dispUv = uv + normalize(d + 1e-5) * lens * uRefract;
+  vec3 col = caustic(dispUv);
+
+  // 進行方向に伸びた発光体
+  vec2 velA = vec2(uVel.x*aspect, uVel.y);
+  float vl = clamp(length(velA) * 25.0, 0.0, 1.2);
+  vec2 dir = (vl > 0.001) ? normalize(velA) : vec2(1.0, 0.0);
+  float along = dot(d, dir);
+  float perp  = dot(d, vec2(-dir.y, dir.x));
+  float ls = uSize * (1.0 + vl*3.0);          // 速いほど縦に伸びる
+  float ws = uSize;
+  float body = exp(-( (along*along)/(ls*ls) + (perp*perp)/(ws*ws) ));
+
+  vec3 bodyCol = vec3(0.55, 0.95, 1.0);
+  col = mix(col, col*0.5 + bodyCol*0.7, body*0.85);   // 半透明発光（光が透ける）
+  col += body * uGlow * bodyCol;
+
+  // 後方の波紋（泳いでいるときだけ）
+  vec2 tailUv = uPos - vec2(dir.x/aspect, dir.y) * uSize * 2.2;
+  vec2 dt = uv - tailUv; dt.x *= aspect; float dr = length(dt);
+  float ring = sin(dr*40.0 - uTime*6.0) * exp(-dr*7.0) * vl;
+  col += ring * 0.18 * bodyCol;
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+let st;
+const PARAMS = [
+  { key:'inertia', label:'泳ぎの慣性',     type:'range', min:0.02, max:0.25, step:0.01, value:0.06 },
+  { key:'size',    uniform:'uSize',     label:'生き物の大きさ', type:'range', min:0.02, max:0.16, step:0.005, value:0.06 },
+  { key:'refract', uniform:'uRefract',  label:'屈折の強さ',   type:'range', min:0.0, max:0.15, step:0.005, value:0.05 },
+  { key:'glow',    uniform:'uGlow',     label:'発光',         type:'range', min:0.0, max:1.5, step:0.05, value:0.6 },
+  { key:'speed',   uniform:'uSpeed',    label:'ゆらぎ速度',   type:'range', min:0.0, max:2.0, step:0.05, value:0.5 },
+  { key:'scale',   uniform:'uScale',    label:'網の細かさ',   type:'range', min:0.5, max:5.0, step:0.1, value:2.0 },
+  { key:'con',     uniform:'uContrast', label:'光のコントラスト', type:'range', min:2.0, max:16.0, step:0.5, value:8.0 },
+  { key:'tint',    uniform:'uTint',     label:'水の色',       type:'color', value:'#005273' },
+];
+
+mount({
+  init(gl){
+    gl.clearColor(0.01, 0.05, 0.08, 1);
+    const program = new Program(gl, { vertex: VERT_FULLSCREEN, fragment: PRECISION + frag, uniforms:{
+      uTime:{value:0}, uResolution:{value:new Vec2(1,1)},
+      uSpeed:{value:0.5}, uScale:{value:2.0}, uContrast:{value:8.0}, uTint:{value:hexToRGBArr('#005273')},
+      uPos:{value:new Vec2(0.5,0.5)}, uVel:{value:new Vec2(0,0)}, uSize:{value:0.06}, uRefract:{value:0.05}, uGlow:{value:0.6} }});
+    st = { program, mesh:new Mesh(gl,{geometry:new Triangle(gl), program}),
+      px:0.5, py:0.5, prevx:0.5, prevy:0.5, tx:0.5, ty:0.5, usePointer:false, inertia:0.06 };
+
+    function pt(e){ const p=e.touches?e.touches[0]:e;
+      st.tx = Math.max(0,Math.min(1, p.clientX/window.innerWidth));
+      st.ty = Math.max(0,Math.min(1, 1 - p.clientY/window.innerHeight));  // uvは下が0
+      st.usePointer = true; }
+    addEventListener('pointermove', pt); addEventListener('pointerdown', pt);
+
+    paramPanel(PARAMS, { title:'生き物の調整', onChange:(k,v)=>{
+      if(k==='inertia'){ st.inertia=v; return; }
+      const p=PARAMS.find(pp=>pp.key===k); if(p&&p.uniform) st.program.uniforms[p.uniform].value=(p.type==='color')?hexToRGBArr(v):v;
+    }});
+    return st;
+  },
+  resize(s,w,h){ s.program.uniforms.uResolution.value.set(w,h); },
+  draw(s,f){
+    // 目標位置：タッチがあればそれ、無ければ傾き
+    const tx = s.usePointer ? s.tx : (0.5 + f.tiltX*0.5);
+    const ty = s.usePointer ? s.ty : (0.5 + f.tiltY*0.5);
+    s.prevx = s.px; s.prevy = s.py;
+    s.px += (tx - s.px) * s.inertia;            // 慣性つき追従＝泳ぎのグライド
+    s.py += (ty - s.py) * s.inertia;
+    s.program.uniforms.uPos.value.set(s.px, s.py);
+    s.program.uniforms.uVel.value.set(s.px - s.prevx, s.py - s.prevy);
+    s.program.uniforms.uTime.value = f.t;
+    f.renderer.render({ scene: s.mesh });
+  },
+}, { title:'水中の生き物（コースティクス）', subtitle:'タッチ/傾きで泳ぐ・光が屈折し波紋が広がる' });
+</script>
+</body></html>
