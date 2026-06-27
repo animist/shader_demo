@@ -76,7 +76,7 @@ float A2 = A + (Da*lap.x - A*B*B + feed*(1.0 - A));
 float B2 = B + (Db*lap.y + A*B*B - (kill + feed)*B);</code></pre></figure>
 
     <h3>⑤ リアルタイムのエフェクト・合成</h3>
-    <p>映像や前段の描画に対し、ピクセル単位で歪み・色収差・グローをかける。<a href="demos/glitch-camera.html">グリッチ・カメラ</a>はカメラ映像をテクスチャ化して実際に歪ませている。</p>
+    <p>映像や前段の描画に対し、ピクセル単位で歪み・色収差・グローをかける。<a href="demos/glitch-camera.html">グリッチ・カメラ</a>はカメラ映像をテクスチャ化して実際に歪ませている。さらに描画を<strong>関数化して座標をずらして呼べば「レンズ越し」</strong>も作れる——<a href="demos/caustics-creature.html">水中の生き物</a>は、泳ぐ何かの周りでコースティクスを屈折させ、位置と速度を JS から渡してインタラクションにしている。</p>
   </section>
 
   <section>

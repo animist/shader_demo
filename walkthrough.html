@@ -151,7 +151,7 @@ for(let k=0;k&lt;s.steps;k++){
 
   <!-- 勘所 -->
   <section>
-    <div class="seclabel"><span class="n">demo 4-9</span><span class="rule"></span></div>
+    <div class="seclabel"><span class="n">demo 4+</span><span class="rule"></span></div>
     <h2>残りのデモ — 勘所だけ</h2>
     <p>基本パターンは上の3本の組み合わせ。各デモで「新しく効いている1行」を抜き出す。</p>
 
@@ -165,6 +165,14 @@ col *= smoothstep(0.0, uHole, r);            <span class="c-com">// 中心を暗
     <figure class="code"><figcaption><span>caustics.html</span><span class="tag">key</span></figcaption><pre><code>for(int n=0;n&lt;5;n++){ i = p + vec2(cos(tt-i.x)+sin(tt+i.y), sin(tt-i.y)+cos(tt+i.x)); ... }
 vec3 col = vec3(pow(abs(c), uContrast));     <span class="c-com">// pow でコントラスト＝光の鋭さ</span></code></pre></figure>
     <p>座標を <code class="inl">sin/cos</code> で繰り返し折り曲げて干渉模様を作り、<code class="inl">pow</code> で明暗を締める。<code class="inl">uContrast</code> が光の鋭さ。</p>
+
+    <h3>水中の生き物 <span class="muted" style="font-weight:400;font-size:13px">— 関数化して“ずらして再サンプル”＝屈折</span></h3>
+    <figure class="code"><figcaption><span>caustics-creature.html</span><span class="tag">fragment + JS</span></figcaption><pre><code>vec3 caustic(vec2 uv){ ... }                       <span class="c-com">// コースティクスを関数に切り出す</span>
+float lens = exp(-dist*6.0);                       <span class="c-com">// 生き物に近いほど強い</span>
+vec2 dispUv = uv + normalize(d) * lens * uRefract; <span class="c-com">// 周りの座標を外へ押し出し</span>
+vec3 col = caustic(dispUv);                        <span class="c-com">// ずらした座標で再サンプル＝光の屈折</span>
+<span class="c-com">// JSから位置 uPos と速度 uVel を渡し、進行方向に伸ばし後方に波紋（泳ぎ）</span></code></pre></figure>
+    <p>勘所は2つ。①<strong>既存シェーダーを関数化</strong>すれば、<strong>座標をずらして呼ぶだけで「レンズ越し」</strong>が作れる（屈折・熱揺らぎ・水滴などに応用可）。②<strong>位置と速度を JS から渡す</strong>＝Breakoutと同じハイブリッドのインタラクション。慣性つきの追従で“泳ぎ”の質感を出している。</p>
 
     <h3>グリッチ <span class="muted" style="font-weight:400;font-size:13px">— 行ごとにズラす＋RGB別取り</span></h3>
     <figure class="code"><figcaption><span>glitch.html / glitch-camera.html</span><span class="tag">key</span></figcaption><pre><code>float row = floor(uv.y * uRows);                         <span class="c-com">// 画面を横帯に分割</span>
