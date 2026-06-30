@@ -394,7 +394,7 @@
       既存の <code>demos/reaction-diffusion.html</code> をベースに、以下を足すだけで成立する。Ping-Pong レンダリングと自動種まきの足回りは既に書いてある。
     </p>
     <ul class="impl-list">
-      <li><strong>text-to-texture パス</strong>: Canvas2D で本文を縦書きレンダ → <code>R32F</code> テクスチャ化 → V チャンネルの初期値として転送。</li>
+      <li><strong>text-to-texture パス</strong>: ブラウザの組版エンジンを使うため <code>SVG&lt;foreignObject&gt;</code> + <code>writing-mode: vertical-rl</code> で HTML を描き、Image 経由で Canvas に焼く。これで「、」「。」の右上配置や「」『』の縦書き字形、長音「ー」の回転など OpenType <code>vert</code> 由来の組版が自動で正しくなる（Canvas2D の <code>fillText</code> は縦書きを知らないので、これらが全部おかしくなる）。13 行ぶんを起動時にキャッシュして実行時は同期コピー。</li>
       <li><strong>seed inject パス</strong>: ⚙ パネルの「再シード」ボタンで、現在の V に新しい文章を加算注入。読み手の意思で「次の段落」「次の作品」を蒔ける。</li>
       <li><strong>挙動プリセット</strong>: mitosis / coral / spots / solitons の <code>f,k</code> ペア切替。文字の崩れ方が劇的に変わる（上のキャンバスでも試せます）。</li>
       <li><strong>paramPanel 追加項目</strong>: <code>text:作品ID</code>, <code>range:フォントサイズ</code>, <code>button:再シード</code>, <code>button:次の節へ</code>。値は URL ハッシュへ自動保存される（既存仕様）。</li>
@@ -407,7 +407,7 @@
       <strong>このページの canvas について</strong> ／
       実際に Gray-Scott を走らせている（200×360 グリッド × 3 ステップ/フレーム、Canvas2D + Float32Array）。
       本番のデモは WebGL2 の半精度 RT で同等以上の解像度を出します。
-      日本語縦書きのグリフは <code style="font-family:var(--mono);font-size:12px">fillText</code> でカラム配置・右起こし。
+      日本語縦書きは <code style="font-family:var(--mono);font-size:12px">SVG&lt;foreignObject&gt;</code> + <code style="font-family:var(--mono);font-size:12px">writing-mode:vertical-rl</code> で組んだ HTML を Image 経由で焼き、ImageData の輝度を V チャネル初期値に。
     </div>
   </section>
 
@@ -468,10 +468,11 @@
   // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
   // 共有 u/v 上で動かし、トラックごとに x-range が違う。
   // 初期 hold 延長で CYCLE_S / N_TRACKS = 7s ずつズラす。
+  const TRACK_W = 66;            // 全トラック共通幅（66×3 + 隙間2px = 200）
   const TRACKS = [
     { x0: 134, x1: 200, phase: 'hold', phaseElapsed: 0, lineIdx: 0, holdExt: 0  }, // 右
-    { x0: 67,  x1: 134, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 7  }, // 中
-    { x0: 0,   x1: 67,  phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左
+    { x0: 67,  x1: 133, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 7  }, // 中
+    { x0: 0,   x1: 66,  phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左
   ];
   let nextGlobalLine = TRACKS.length; // 行 0,1,2 は初期表示済み → 次は 3
 
@@ -485,32 +486,66 @@
   const targetU = new Float32Array(SIM_W * SIM_H);
   const targetV = new Float32Array(SIM_W * SIM_H);
 
-  // 縦書きテキストを [x0, x1) の x-range にだけ書き込む（その範囲外は変更しない）
-  function renderLineInRange(lineText, outU, outV, x0, x1){
-    const tw = x1 - x0;
-    const off = document.createElement('canvas');
-    off.width = tw; off.height = SIM_H;
-    const o = off.getContext('2d');
-    o.fillStyle = '#000'; o.fillRect(0, 0, tw, SIM_H);
-    o.fillStyle = '#fff'; o.textBaseline = 'top';
-    o.font = `600 16px "Hiragino Mincho ProN","YuMincho","Yu Mincho",serif`;
-    const colSpacing = 22, lineH = 18;
-    const sx = tw - 18, sy = 22; // 各トラック内で右上から始める
-    let col = 0, yPos = sy;
-    for (const ch of lineText){
-      if (yPos > SIM_H - 22){ col++; yPos = sy; }
-      const x = sx - col * colSpacing;
-      if (x < 4) break;
-      o.fillText(ch, x, yPos);
-      yPos += lineH;
+  // ── ブラウザの組版エンジンで縦書きを描く ───────────────
+  // Canvas2D の fillText は縦書きを知らないので、句読点・括弧・長音などが
+  // 横書き字形のまま並んでしまう。代わりに SVG <foreignObject> の中で
+  // CSS writing-mode: vertical-rl をかけた HTML を描かせ、Image 経由で
+  // Canvas に焼いて ImageData として取り出す。これでブラウザの OpenType
+  // vert フィーチャや text-orientation が効き、縦書き組版が正しくなる。
+  function escHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function renderLineSVG(lineText, w, h){
+    return new Promise((resolve, reject) => {
+      const css = `writing-mode:vertical-rl;text-orientation:mixed;`
+        + `font-family:'Hiragino Mincho ProN','YuMincho','Yu Mincho','Noto Serif JP',serif;`
+        + `font-size:16px;font-weight:600;color:#fff;background:#000;`
+        + `padding:8px 5px;line-height:22px;`
+        + `width:${w}px;height:${h}px;box-sizing:border-box;overflow:hidden;`;
+      const xhtml = `<div xmlns="http://www.w3.org/1999/xhtml" style="${css}">${escHtml(lineText)}</div>`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">`
+        + `<foreignObject x="0" y="0" width="${w}" height="${h}">${xhtml}</foreignObject></svg>`;
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const o = off.getContext('2d');
+        o.fillStyle = '#000'; o.fillRect(0, 0, w, h);
+        o.drawImage(img, 0, 0);
+        const data = o.getImageData(0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(data);
+      };
+      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    });
+  }
+  // 13 行ぶんを起動時に焼いてキャッシュ。実行中は同期にコピーするだけ。
+  let lineCache = null;
+  async function precomputeLineCache(){
+    const cache = [];
+    for (let i = 0; i < TEXT_LINES.length; i++){
+      cache.push(await renderLineSVG(TEXT_LINES[i], TRACK_W, SIM_H));
     }
-    const img = o.getImageData(0, 0, tw, SIM_H);
+    lineCache = cache;
+  }
+
+  // 縦書きテキストを [x0, x1) の x-range に書き込む（その範囲外は変更しない）
+  function renderLineInRange(lineIdx, outU, outV, x0, x1){
+    if (!lineCache) return; // 未準備
+    const img = lineCache[lineIdx];
+    const tw = img.width;
+    const data = img.data;
+    const drawW = Math.min(tw, x1 - x0);
     for (let y = 0; y < SIM_H; y++){
       const imgRow = y * tw;
       const outRow = y * SIM_W;
-      for (let x = 0; x < tw; x++){
+      for (let x = 0; x < drawW; x++){
         const i = outRow + x0 + x;
-        const lum = img.data[(imgRow + x) * 4];
+        const lum = data[(imgRow + x) * 4];
         if (lum > 80){
           const w = lum / 255;
           outV[i] = 0.55 + w * 0.4;
@@ -566,7 +601,7 @@
       if (t.phaseElapsed >= DISSOLVE_S){
         t.lineIdx = nextGlobalLine % TEXT_LINES.length;
         nextGlobalLine++;
-        renderLineInRange(TEXT_LINES[t.lineIdx], targetU, targetV, t.x0, t.x1);
+        renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
         t.phase = 'reform'; t.phaseElapsed = 0;
       }
     } else if (t.phase === 'reform'){
@@ -589,7 +624,7 @@
     targetU.fill(1.0); targetV.fill(0.0);
     // 各トラックに自分の初期行を焼き込む
     for (const t of TRACKS){
-      renderLineInRange(TEXT_LINES[t.lineIdx], targetU, targetV, t.x0, t.x1);
+      renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
     }
     // u, v を target に揃える（最初は全部読める状態）
     u.set(targetU); v.set(targetV);
@@ -703,7 +738,7 @@
     }
     pick.lineIdx = nextGlobalLine % TEXT_LINES.length;
     nextGlobalLine++;
-    renderLineInRange(TEXT_LINES[pick.lineIdx], targetU, targetV, pick.x0, pick.x1);
+    renderLineInRange(pick.lineIdx, targetU, targetV, pick.x0, pick.x1);
     pick.phase = 'reform'; pick.phaseElapsed = 0;
   }
 
@@ -717,12 +752,20 @@
     cur = presets[e.target.value];
   });
 
-  if (document.fonts && document.fonts.ready){
-    document.fonts.ready.then(() => { restartFromTop(); requestAnimationFrame(loop); });
-  } else {
+  // 起動：フォント読み込み待ち → SVG縦書きを 13 行ぶんキャッシュ → 開始
+  (async () => {
+    timerEl.textContent = '準備中…';
+    try {
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      await precomputeLineCache();
+    } catch (e) {
+      console.error('縦書き SVG の準備に失敗しました', e);
+      timerEl.textContent = '縦書き準備失敗';
+      return;
+    }
     restartFromTop();
     requestAnimationFrame(loop);
-  }
+  })();
 })();
 </script>
 <p style="text-align:center;margin:40px 0 0;font-family:-apple-system,sans-serif;font-size:12px"><a href="../index.html" style="color:#8a8276;text-decoration:none;border:1px solid #2a2620;padding:8px 14px;border-radius:1px">← shader_demo 一覧へ</a></p>
