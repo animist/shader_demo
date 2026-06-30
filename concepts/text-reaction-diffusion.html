@@ -943,23 +943,23 @@
     raf = requestAnimationFrame(loop);
   }
 
-  // 任意のタイミングで「次の行」へジャンプ：1 つも reform/hold/ramp が無ければ全て dissolve のはず、
-  // その場合は最も dissolve が長く進んでいるトラックを reform に進める。
+  // 「次の行へ」: 各トラックの lineIdx を +1 し、全トラックを同時に reform に
+  // 入れて次行へ進む。読み順（…→k→k+1→…）が保たれる。stagger は初期値に戻し、
+  // reform 終了後に元のオフセットで定常状態へ。
   function jumpNextReform(){
-    let pick = TRACKS[0], best = -1;
-    for (const t of TRACKS){
-      const score = (t.phase === 'dissolve') ? t.phaseElapsed
-                  : (t.phase === 'ramp')     ? RAMP_S + t.phaseElapsed
-                  : (t.phase === 'hold')     ? RAMP_S + DISSOLVE_S + t.phaseElapsed
-                  : -100; // reform は対象外
-      if (score > best){ best = score; pick = t; }
-    }
     const len = TEXT_LINES.length;
-    pick.lineIdx = len ? nextGlobalLine % len : 0;
-    nextGlobalLine++;
-    renderLineInRange(pick.lineIdx, targetU, targetV, pick.x0, pick.x1);
-    initReformSnapMoments(pick);
-    pick.phase = 'reform'; pick.phaseElapsed = 0;
+    if (!len) return;
+    for (let k = 0; k < TRACKS.length; k++){
+      const t = TRACKS[k];
+      t.lineIdx = (t.lineIdx + 1) % len;
+      renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
+      initReformSnapMoments(t);
+      t.phase = 'reform'; t.phaseElapsed = 0;
+      t.holdExt = k * (CYCLE_S / TRACKS.length);
+    }
+    // 次に自然サイクルで割り当てる行 = 現在の最大 lineIdx + 1
+    const maxLine = TRACKS.reduce((m, t) => Math.max(m, t.lineIdx), 0);
+    nextGlobalLine = (maxLine + 1) % len;
   }
 
   document.getElementById('reset').addEventListener('click', () => { restartFromTop(); });
