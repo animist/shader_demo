@@ -122,6 +122,23 @@
   .btn:focus-visible,.sel:focus-visible{outline:1px solid var(--live);outline-offset:2px}
   .sel{padding-right:32px;background-image:linear-gradient(45deg,transparent 50%,var(--ink-mute) 50%),linear-gradient(135deg,var(--ink-mute) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 
+  .speed-row{
+    display:flex;align-items:center;gap:14px;
+    margin-top:14px;padding:10px 14px;
+    background:var(--surf-1);border:1px solid var(--hairline);border-radius:1px;
+  }
+  .speed-row .speed-label{
+    font-family:var(--gothic);font-size:11px;letter-spacing:.20em;
+    text-transform:uppercase;color:var(--ink-faint);min-width:32px;
+  }
+  .speed-row input[type=range]{
+    flex:1;accent-color:var(--live);background:transparent;max-width:280px;
+  }
+  .speed-row .speed-val{
+    font-family:var(--mono);font-size:13px;color:var(--ink);
+    font-variant-numeric:tabular-nums;min-width:48px;text-align:right;
+  }
+
   /* ── Sections ──────────────────────────────────────────── */
   h2{
     font-family:var(--gothic);
@@ -320,22 +337,28 @@
         <option value="chaos">混沌 chaos</option>
       </select>
     </div>
+    <div class="speed-row">
+      <span class="speed-label">速度</span>
+      <input type="range" id="speed" min="0.5" max="4" step="0.1" value="2" aria-label="読み進めの速度">
+      <span class="speed-val" id="speedval">2.0×</span>
+    </div>
   </section>
 
   <p class="lede">
-    「羅生門」冒頭の段落を <em>3 本のトラック</em>（右・中・左）に並べ、各トラックが独立した
-    <em>静止 → 立ち上がり → 拡散 → 再集結</em> サイクルを <em>7 秒ずつズラして</em> 回す。
-    あるトラックが読める姿で立っているとき、別のトラックは模様に解け、また別のトラックは
-    模様から次の行を集めている。<strong>読み終わる前に模様になり、隣の模様から次の言葉が再び立ち上がる</strong>。
-    13 行で一段落、終端で 1 行目へループ。
+    「羅生門」<em>全文</em>を <em>3 本のトラック</em>（右・中・左）に並べ、各トラックが独立した
+    <em>静止 → 立ち上がり → 拡散 → 再集結</em> サイクルを <em>1/3 サイクルずつズラして</em> 回す。
+    再集結は <em>セルごとに別タイミングで target に snap</em> させ、文字セルから先に粒として立ち上がる
+    — クロスフェードではなく「<strong>粒が集まって字になる</strong>」見え方を狙う。
+    速度スライダーで読み進みのテンポを 0.5×〜4× で調整（既定 2×）、終端で先頭へループ。
   </p>
 
   <section>
     <h2>進行</h2>
     <p style="font-size:14.5px;color:var(--ink-mute);line-height:1.9;margin:0 0 24px">
-      各トラックは独立な 21 秒サイクル。<code>sim</code> は常時全速力で回し、位相は
-      <em>target に向かう lock 強度</em>（hold=1.0 / ramp=<code>1−p³</code> / dissolve=0 / reform=<code>1−(1−p)³</code>）
-      でだけ表現する。初期の hold 延長で 7 秒ずつズラし、定常状態に入る。
+      各トラックは独立な 21 秒サイクル（速度スライダーで wall-clock 上の長さを 0.5×〜4× 調整）。
+      <code>sim</code> は常時全速力で回し、位相は
+      <em>hold</em>=lock 1.0 / <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em>
+      で表現する。初期の hold 延長で 1/3 サイクルずつズラし、定常状態へ。
     </p>
     <ol class="phases">
       <li>
@@ -362,15 +385,15 @@
       <li>
         <time>3 s</time>
         <div>
-          <h3>再集結 — 次の行（lock = 1−(1−p)³）</h3>
-          <p>そのトラックの x-range に <em>次の行のグリフ</em>を target として焼き込み、lock を cubic ease-out で 0 → 1 に上げる。sim が churning する中、新しい文字が引き寄せられて立ち上がる。終端で target に snap。</p>
+          <h3>再集結 — per-cell snap で「粒が集まる」</h3>
+          <p>そのトラックの x-range に <em>次の行のグリフ</em>を target として焼き込み、各セルに <code>0..REFORM_S</code> の snap 閾値を乱数配布する。文字セル（targetV 明）は前半 55% に、背景セルは後半 60% にバラまく。<code>phaseElapsed</code> が閾値を超えたセルは target に snap し、未 snap セルは sim 任せで churning。結果、<em>セルが個別タイミングでカチカチ立ち上がり、文字が先に組み上がってから背景が落ち着く</em>。一斉クロスフェードを避けるための要。</p>
         </div>
       </li>
       <li>
         <time>↻</time>
         <div>
-          <h3>3 トラック並列 / 7 秒ズレ / global counter</h3>
-          <p>初期 hold を 0s / 7s / 14s で延長して定常状態へ。reform を抜ける順に <em>nextGlobalLine</em> から行番号を払い出すので、読み順 0→1→2→3→… が保持される。最終行の reform 完了でループ。</p>
+          <h3>3 トラック並列 / 1/3 サイクルズレ / global counter</h3>
+          <p>初期 hold を 0 / CYCLE/3 / 2·CYCLE/3 で延長して定常状態へ。reform を抜ける順に <em>nextGlobalLine</em> から行番号を払い出すので、読み順 0→1→2→3→… が保持される。最終行の reform 完了で先頭へループ。本文は青空文庫の旧字旧仮名版から起動時に fetch、約 400 行に分割。</p>
         </div>
       </li>
     </ol>
@@ -383,8 +406,7 @@
       <cite>芥川龍之介「羅生門」 (1915) · 青空文庫 No.879 · 旧字旧仮名</cite>
     </blockquote>
     <p class="source-note">
-      青空文庫は CORS を許可していないため fetch は不可。本文 txt 版（パブリックドメイン）を repo に同梱する形にする。
-      ルビ記法 <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">漢字《かんじ》</code> と注記 <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">［＃...］</code> は10行程度のパーサーで剥がせる。短編1本で数十KB。
+      青空文庫の HTML は Shift_JIS、CORS も不可。<code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">curl | iconv -f SHIFT_JIS -t UTF-8</code> で取り、Python で <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">&lt;ruby&gt;</code> と <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">［＃…］</code> 等を剥がし <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">concepts/texts/rashomon.txt</code> として repo に同梱（パブリックドメイン）。起動時に fetch、句点で文単位 → 長文は読点で更に分割し、目標 18 字以下の読み取り単位に整形（実測 約 410 行・平均 14 字）。
     </p>
   </section>
 
@@ -395,7 +417,8 @@
     </p>
     <ul class="impl-list">
       <li><strong>text-to-texture パス</strong>: ブラウザの組版エンジンを使うため <code>SVG&lt;foreignObject&gt;</code> + <code>writing-mode: vertical-rl</code> で HTML を描き、Image 経由で Canvas に焼く。これで「、」「。」の右上配置や「」『』の縦書き字形、長音「ー」の回転など OpenType <code>vert</code> 由来の組版が自動で正しくなる（Canvas2D の <code>fillText</code> は縦書きを知らないので、これらが全部おかしくなる）。13 行ぶんを起動時にキャッシュして実行時は同期コピー。</li>
-      <li><strong>seed inject パス</strong>: ⚙ パネルの「再シード」ボタンで、現在の V に新しい文章を加算注入。読み手の意思で「次の段落」「次の作品」を蒔ける。</li>
+      <li><strong>per-cell snap による再集結</strong>: dissolve→reform 移行時に各セルへ <code>snapMoment[i] ∈ [0, REFORM_S]</code> を乱数配布。<code>targetV[i] &gt; 0.4</code> の文字セルは前半、背景セルは後半に snap させ、<em>粒が個別タイミングで固まり、文字が先に立ち上がる</em>挙動を作る。一斉 lerp の crossfade 感を消す要。</li>
+      <li><strong>速度スライダー</strong>: フレーム毎の <code>dt</code> に倍率を掛けて sim 時間に変換。サイクル長もシミュレーションも同じ係数でスケールするので、テンポを変えても各位相の比は保たれる。</li>
       <li><strong>挙動プリセット</strong>: mitosis / coral / spots / solitons の <code>f,k</code> ペア切替。文字の崩れ方が劇的に変わる（上のキャンバスでも試せます）。</li>
       <li><strong>paramPanel 追加項目</strong>: <code>text:作品ID</code>, <code>range:フォントサイズ</code>, <code>button:再シード</code>, <code>button:次の節へ</code>。値は URL ハッシュへ自動保存される（既存仕様）。</li>
       <li><strong>カラーマップ</strong>: 既存 reaction-diffusion デモは emerald → purple。本案は素材に合わせて<em>苔の闇</em>から<em>螢光の青磁</em>へ。朽葉色 <code>#b5573a</code> を縁取りアクセントに。</li>
@@ -405,7 +428,7 @@
   <section>
     <div class="disclaimer">
       <strong>このページの canvas について</strong> ／
-      実際に Gray-Scott を走らせている（200×360 グリッド × 3 ステップ/フレーム、Canvas2D + Float32Array）。
+      実際に Gray-Scott を走らせている（200×360 グリッド、Karl Sims 9点ラプラシアン、Canvas2D + Float32Array、180 sps × 速度倍率）。
       本番のデモは WebGL2 の半精度 RT で同等以上の解像度を出します。
       日本語縦書きは <code style="font-family:var(--mono);font-size:12px">SVG&lt;foreignObject&gt;</code> + <code style="font-family:var(--mono);font-size:12px">writing-mode:vertical-rl</code> で組んだ HTML を Image 経由で焼き、ImageData の輝度を V チャネル初期値に。
     </div>
@@ -439,23 +462,43 @@
   };
   let cur = presets.mitosis;
   let paused = false;
+  let speedMul = 2.0; // 既定 2×、UI スライダーで 0.5×〜4× で可変
 
-  // ── 行ごとのループ：羅生門 冒頭一段落 ────────────────────
-  const TEXT_LINES = [
-    '或日の暮方の事である。',
-    '一人の下人が、',
-    '羅生門の下で雨やみを待つてゐた。',
-    '広い門の下には、',
-    'この男の外に誰もゐない。',
-    '唯、所々丹塗の剥げた、',
-    '大きな円柱に、',
-    '蟋蟀が一匹とまつてゐる。',
-    '羅生門が、朱雀大路にある以上は、',
-    'この男の外にも、',
-    '雨やみをする市女笠や揉烏帽子が、',
-    'もう二三人はありさうなものである。',
-    'それが、この男の外には誰もゐない。',
-  ];
+  // ── 本文：羅生門 全文（青空文庫 旧字旧仮名版を起動時に fetch） ────
+  let TEXT_LINES = []; // loadAndSplit() で populate
+  // 段落を「句点で文単位 → 長文は読点でさらに分割」して縦書きキャンバスに収まる
+  // 読み取り単位にする（目標 ≈ 18 字以下、収まらないものは縦書き wrap に任せる）
+  function splitParagraph(para){
+    const sents = para.match(/[^。！？]*[。！？]/g) || [para];
+    const TARGET = 18;
+    const out = [];
+    for (const sen of sents){
+      if (sen.length <= TARGET){ out.push(sen); continue; }
+      const parts = sen.match(/[^、]*、?/g) || [sen];
+      let cur = '';
+      for (const x of parts){
+        if (cur && (cur + x).length > TARGET){ out.push(cur); cur = x; }
+        else cur += x;
+      }
+      if (cur) out.push(cur);
+    }
+    return out;
+  }
+  async function loadAndSplit(){
+    const resp = await fetch('texts/rashomon.txt');
+    if (!resp.ok) throw new Error('texts/rashomon.txt が取得できません');
+    const text = await resp.text();
+    const lines = [];
+    for (const para of text.split('\n')){
+      const p = para.trim();
+      if (!p) continue;
+      for (const l of splitParagraph(p)){
+        const t = l.trim();
+        if (t) lines.push(t);
+      }
+    }
+    TEXT_LINES = lines;
+  }
 
   // ── サイクル時間（1行あたり HOLD + RAMP + DISSOLVE + REFORM = 21s）
   const HOLD_S = 2;              // 静止：文字を読める時間
@@ -523,20 +566,30 @@
       img.src = url;
     });
   }
-  // 13 行ぶんを起動時に焼いてキャッシュ。実行中は同期にコピーするだけ。
-  let lineCache = null;
-  async function precomputeLineCache(){
-    const cache = [];
-    for (let i = 0; i < TEXT_LINES.length; i++){
-      cache.push(await renderLineSVG(TEXT_LINES[i], TRACK_W, SIM_H));
-    }
-    lineCache = cache;
+  // ImageData を Map で sparse にキャッシュ。lazy load 可。
+  const lineCache = new Map();
+  async function renderLineAndCache(idx){
+    if (lineCache.has(idx)) return;
+    if (idx < 0 || idx >= TEXT_LINES.length) return;
+    const img = await renderLineSVG(TEXT_LINES[idx], TRACK_W, SIM_H);
+    lineCache.set(idx, img);
   }
 
   // 縦書きテキストを [x0, x1) の x-range に書き込む（その範囲外は変更しない）
   function renderLineInRange(lineIdx, outU, outV, x0, x1){
-    if (!lineCache) return; // 未準備
-    const img = lineCache[lineIdx];
+    const img = lineCache.get(lineIdx);
+    if (!img){
+      // キャッシュ未着：背景値で埋め、to be ready の bg レンダを kick
+      for (let y = 0; y < SIM_H; y++){
+        const outRow = y * SIM_W;
+        for (let x = x0; x < x1; x++){
+          outU[outRow + x] = 1.0;
+          outV[outRow + x] = 0.0;
+        }
+      }
+      renderLineAndCache(lineIdx);
+      return;
+    }
     const tw = img.width;
     const data = img.data;
     const drawW = Math.min(tw, x1 - x0);
@@ -553,6 +606,35 @@
         } else {
           outV[i] = 0;
           outU[i] = 1;
+        }
+      }
+    }
+  }
+
+  // ── reform 用：セルごとの snap タイミング ────────────────
+  // 各セルに 0..REFORM_S の閾値を割り、phaseElapsed が閾値を超えたら
+  // target に snap。文字セル（targetV 明）を前半に、背景セルを後半に snap させて
+  // 「文字が先に粒として立ち上がり、後から背景が落ち着く」演出にする。
+  const snapMoment = new Float32Array(SIM_W * SIM_H);
+  function initReformSnapMoments(t){
+    for (let y = 0; y < SIM_H; y++){
+      for (let x = t.x0; x < t.x1; x++){
+        const i = y * SIM_W + x;
+        const isLetter = targetV[i] > 0.4;
+        snapMoment[i] = isLetter
+          ? Math.random() * REFORM_S * 0.55
+          : REFORM_S * 0.40 + Math.random() * REFORM_S * 0.60;
+      }
+    }
+  }
+  function applyReformSnap(t){
+    for (let y = 0; y < SIM_H; y++){
+      const row = y * SIM_W;
+      for (let x = t.x0; x < t.x1; x++){
+        const i = row + x;
+        if (t.phaseElapsed >= snapMoment[i]){
+          u[i] = targetU[i];
+          v[i] = targetV[i];
         }
       }
     }
@@ -599,10 +681,14 @@
       if (t.phaseElapsed >= RAMP_S){ t.phase = 'dissolve'; t.phaseElapsed = 0; }
     } else if (t.phase === 'dissolve'){
       if (t.phaseElapsed >= DISSOLVE_S){
-        t.lineIdx = nextGlobalLine % TEXT_LINES.length;
+        const len = TEXT_LINES.length;
+        t.lineIdx = len ? nextGlobalLine % len : 0;
         nextGlobalLine++;
         renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
+        initReformSnapMoments(t);
         t.phase = 'reform'; t.phaseElapsed = 0;
+        // 先読み：次の数行を bg で焼く（拡散中の dt は十分あるので余裕で間に合う）
+        for (let k = 1; k <= 3 && len; k++) renderLineAndCache((t.lineIdx + k) % len);
       }
     } else if (t.phase === 'reform'){
       if (t.phaseElapsed >= REFORM_S){
@@ -709,15 +795,17 @@
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     if (!paused){
-      simElapsed += dt;
-      // sim は常に全速力で回す（位相は各トラックの lock 強度で表現）
-      stepAccum += FULL_STEPS_PER_SEC * dt;
-      let safety = 24;
+      // 速度倍率を dt に掛けて sim 時間を進める。暴走防止のため上限 0.1s。
+      const dts = Math.min(0.1, dt * speedMul);
+      simElapsed += dts;
+      stepAccum += FULL_STEPS_PER_SEC * dts;
+      let safety = 32;
       while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
-      // 各トラックを進めて lock を適用
+      // 各トラックを進めて、reform は per-cell snap、それ以外は lock を適用
       for (const t of TRACKS){
-        advanceTrack(t, dt);
-        applyTrackLock(t, lockStrength(t));
+        advanceTrack(t, dts);
+        if (t.phase === 'reform') applyReformSnap(t);
+        else applyTrackLock(t, lockStrength(t));
       }
     }
     render();
@@ -736,9 +824,11 @@
                   : -100; // reform は対象外
       if (score > best){ best = score; pick = t; }
     }
-    pick.lineIdx = nextGlobalLine % TEXT_LINES.length;
+    const len = TEXT_LINES.length;
+    pick.lineIdx = len ? nextGlobalLine % len : 0;
     nextGlobalLine++;
     renderLineInRange(pick.lineIdx, targetU, targetV, pick.x0, pick.x1);
+    initReformSnapMoments(pick);
     pick.phase = 'reform'; pick.phaseElapsed = 0;
   }
 
@@ -751,20 +841,40 @@
   document.getElementById('preset').addEventListener('change', (e) => {
     cur = presets[e.target.value];
   });
+  const speedEl = document.getElementById('speed');
+  const speedValEl = document.getElementById('speedval');
+  function syncSpeedLabel(){ speedValEl.textContent = speedMul.toFixed(1) + '×'; }
+  speedEl.value = speedMul.toFixed(1);
+  syncSpeedLabel();
+  speedEl.addEventListener('input', () => {
+    speedMul = parseFloat(speedEl.value);
+    syncSpeedLabel();
+  });
 
-  // 起動：フォント読み込み待ち → SVG縦書きを 13 行ぶんキャッシュ → 開始
+  // 起動：フォント待ち → 本文 fetch → 初期 24 行を焼く → ループ開始 → 残りを bg で焼く
   (async () => {
-    timerEl.textContent = '準備中…';
+    timerEl.textContent = '本文取得中…';
     try {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      await precomputeLineCache();
+      await loadAndSplit();
+      const preload = Math.min(24, TEXT_LINES.length);
+      for (let i = 0; i < preload; i++){
+        timerEl.textContent = `準備中… ${i+1}/${preload}（全 ${TEXT_LINES.length} 行）`;
+        await renderLineAndCache(i);
+      }
     } catch (e) {
-      console.error('縦書き SVG の準備に失敗しました', e);
-      timerEl.textContent = '縦書き準備失敗';
+      console.error(e);
+      timerEl.textContent = '読込失敗: ' + (e.message || e);
       return;
     }
     restartFromTop();
     requestAnimationFrame(loop);
+    // 残りは背景で焼く（読み進み中もキャッシュが先回り）
+    (async () => {
+      for (let i = 24; i < TEXT_LINES.length; i++){
+        if (!lineCache.has(i)) await renderLineAndCache(i);
+      }
+    })();
   })();
 })();
 </script>
