@@ -468,63 +468,104 @@
 
   // ── 本文：羅生門 全文（青空文庫 旧字旧仮名版を起動時に fetch） ────
   let TEXT_LINES = []; // loadAndSplit() で populate
-  // 段落を「句点で文単位 → 長文は読点で分割 → なお長ければ文字数で強制分割」
-  // 1 列 ≈ 18 字、レーン 50px は 2 列まで → 1 行最大 32 字。TARGET=16 で
-  // 1 列に収まる行を優先しつつ、収まらなければ 2 列に。
-  function splitParagraph(para){
-    const sents = para.match(/[^。！？]*[。！？]/g) || [para];
-    const TARGET = 16, MAX = 32;
-    const out = [];
-    for (const sen of sents){
-      if (sen.length <= TARGET){ out.push(sen); continue; }
-      const parts = sen.match(/[^、]*、?/g) || [sen];
-      let cur = '';
-      for (const x of parts){
-        if (cur && (cur + x).length > TARGET){ out.push(cur); cur = x; }
-        else cur += x;
-      }
-      if (cur) out.push(cur);
-    }
-    // 上記でも MAX を超える行（、を含まない長文）を文字数で強制分割
-    const splat = [];
-    for (const l of out){
-      if (l.length <= MAX){ splat.push(l); continue; }
-      for (let i = 0; i < l.length; i += MAX) splat.push(l.substring(i, i + MAX));
-    }
-    return splat;
+  // ── 行分割：文字種・助詞・読点を見て自然な位置で切る ───────
+  const POST_PARTICLES = new Set(['は','が','を','に','へ','で','と','も','や','か','ね','よ','ぞ','し']);
+  const GERUND_TE = new Set(['て','で','た','だ']);
+  const HEAD_FORBID_CHARS = '、。，．？！）」』〕〙〗｝〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮーゝゞヽヾ';
+  const TAIL_FORBID_CHARS = '（［｛〔〘〖「『';
+  function isKanji(ch){ return ch >= '一' && ch <= '龯'; }
+  function isHiragana(ch){ return ch >= 'ぁ' && ch <= 'ゟ'; }
+  function isKatakana(ch){ return ch >= '゠' && ch <= 'ヿ'; }
+  function isKana(ch){ return isHiragana(ch) || isKatakana(ch); }
+  // breakScore(s, i): s[i-1] と s[i] の間で切ったときの良さ（-Infinity = 切るな）
+  function breakScore(s, i){
+    if (i <= 0 || i >= s.length) return -Infinity;
+    const prev = s[i - 1], next = s[i];
+    if (HEAD_FORBID_CHARS.includes(next)) return -Infinity;   // 行頭禁則を踏まない
+    if (TAIL_FORBID_CHARS.includes(prev)) return -Infinity;   // 行末禁則を踏まない
+    if (prev === 'の' && (isKanji(next) || isKana(next))) return -Infinity; // 連体修飾の の は切らない
+    if (prev === '。' || prev === '！' || prev === '？') return 200;
+    if (prev === '、') return 150;
+    if ('」』〕）'.includes(prev)) return 100;
+    if (POST_PARTICLES.has(prev)) return isKanji(next) ? 70 : 40;
+    if (GERUND_TE.has(prev))      return isKanji(next) ? 55 : 30;
+    if (isKana(prev) && isKanji(next)) return 25;             // かな→漢字 = 語頭の合図
+    if (isKanji(prev) && isKana(next)) return 15;             // 漢字→かな = 助詞の合図
+    return 0;
   }
-  // 禁則処理：閉じ記号・小書き仮名・長音などが行頭に来ないよう前行に押し戻す。
-  // また開き括弧が行末に来ないよう次行頭に移す。これで「、だけの行」
-  // 「閉じカギ括弧だけ行頭」のような不自然な分割が解消される。
-  const HEAD_FORBID = /^[、。，．？！）」』〕〙〗｝〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮーゝゞヽヾ]/;
-  const TAIL_FORBID = /[（［｛〔〘〖「『]$/;
+  // segCount 個に近い長さで分け、各セグメントは TARGET 以下で best break を選ぶ
+  function smartSplit(s, TARGET){
+    if (s.length <= TARGET) return [s];
+    const segCount = Math.ceil(s.length / TARGET);
+    const idealLen = s.length / segCount;
+    const result = [];
+    let start = 0;
+    for (let n = 0; n < segCount - 1; n++){
+      const idealEnd = start + idealLen;
+      const maxPos = Math.min(s.length - 1, start + TARGET);
+      const minPos = Math.max(start + 1, Math.floor(idealEnd - idealLen * 0.4));
+      let bestPos = Math.min(maxPos, Math.round(idealEnd));
+      let bestScore = -Infinity;
+      for (let i = minPos; i <= maxPos; i++){
+        const sc = breakScore(s, i);
+        if (sc === -Infinity) continue;
+        const adj = sc - Math.abs(i - idealEnd) * 3;
+        if (adj > bestScore){ bestScore = adj; bestPos = i; }
+      }
+      result.push(s.substring(start, bestPos));
+      start = bestPos;
+    }
+    result.push(s.substring(start));
+    // 末尾が TARGET 超なら再帰
+    if (result[result.length - 1].length > TARGET){
+      const last = result.pop();
+      result.push(...smartSplit(last, TARGET));
+    }
+    return result;
+  }
+  // 句点で文単位（末尾に 」 等が来る場合も拾うため tail-allowing regex）
+  function splitParagraph(para){
+    const sents = para.match(/[^。！？]+[。！？]?|[。！？]+/g) || [];
+    const out = [];
+    const TARGET = 17; // 1 列 ≈ 18 字、禁則で +1 されることを見越して 17 で切る
+    for (const sen of sents){
+      if (sen.length <= TARGET) out.push(sen);
+      else out.push(...smartSplit(sen, TARGET));
+    }
+    return out;
+  }
+  // 禁則処理（行頭・行末）— 段落区切り（空行）は越えない
+  const HEAD_FORBID = new RegExp('^[' + HEAD_FORBID_CHARS + ']');
+  const TAIL_FORBID = new RegExp('[' + TAIL_FORBID_CHARS + ']$');
   function applyKinsoku(lines){
     const out = [];
     for (let line of lines){
-      while (out.length > 0 && line.length > 0 && HEAD_FORBID.test(line)){
+      if (line.length === 0){ out.push(''); continue; } // 段落区切りはそのまま
+      while (out.length > 0 && out[out.length - 1].length > 0 && HEAD_FORBID.test(line)){
         out[out.length - 1] += line.charAt(0);
         line = line.substring(1);
       }
       if (line.length > 0) out.push(line);
     }
     for (let i = 0; i < out.length - 1; i++){
+      if (out[i + 1].length === 0) continue; // 段落区切りの上に開き括弧を持ち越さない
       while (out[i].length > 0 && TAIL_FORBID.test(out[i])){
         const ch = out[i].slice(-1);
         out[i] = out[i].slice(0, -1);
         out[i + 1] = ch + out[i + 1];
       }
     }
-    return out.filter(l => l.length > 0);
+    return out; // 空行（段落区切り）はそのまま残す
   }
   async function loadAndSplit(){
     const resp = await fetch('texts/rashomon.txt');
     if (!resp.ok) throw new Error('texts/rashomon.txt が取得できません');
     const text = await resp.text();
+    const paras = text.split('\n').map(p => p.trim()).filter(Boolean);
     const lines = [];
-    for (const para of text.split('\n')){
-      const p = para.trim();
-      if (!p) continue;
-      for (const l of splitParagraph(p)){
+    for (let i = 0; i < paras.length; i++){
+      if (i > 0) lines.push(''); // 段落間に空行を挿入
+      for (const l of splitParagraph(paras[i])){
         const t = l.trim();
         if (t) lines.push(t);
       }
