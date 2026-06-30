@@ -339,7 +339,7 @@
     </div>
     <div class="speed-row">
       <span class="speed-label">速度</span>
-      <input type="range" id="speed" min="0.5" max="8" step="0.1" value="4" aria-label="読み進めの速度">
+      <input type="range" id="speed" min="0.5" max="16" step="0.1" value="4" aria-label="読み進めの速度">
       <span class="speed-val" id="speedval">4.0×</span>
     </div>
   </section>
@@ -355,7 +355,7 @@
   <section>
     <h2>進行</h2>
     <p style="font-size:14.5px;color:var(--ink-mute);line-height:1.9;margin:0 0 24px">
-      各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 10 / DISSOLVE 12 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜8× 調整）。
+      各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 10 / DISSOLVE 12 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜16× 調整）。
       <code>HOLD+RAMP = 14 = 2×stagger</code> なので、常に 2 トラックが hold か ramp（=可読）、残り 2 トラックが拡散か再集結のオーバーラップ構成。
       <code>sim</code> は常時全速力で回し、位相は
       <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0</code>）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
@@ -418,7 +418,7 @@
     <ul class="impl-list">
       <li><strong>text-to-texture パス</strong>: 当初 <code>SVG&lt;foreignObject&gt;</code> + <code>writing-mode: vertical-rl</code> でブラウザ組版に丸投げを試みたが、foreignObject 入り画像は canvas を cross-origin tainted 化し <code>getImageData</code> が SecurityError になる仕様だったため断念。代わりに Canvas2D <code>fillText</code> で 1 字ずつ縦に流しつつ、<em>縦書きで崩れる文字種だけを補正</em>: <code>「」『』</code> は U+FE41〜FE44 の縦書き専用形に差替え、<code>、。，．</code> は字面の右上へ平行移動 (<code>+0.45fs, -0.5fs</code>)、<code>― — ー 〜 〜 ‐</code> は 90° 時計回り回転。羅生門本文に出現するこれら 4 種で網羅される。</li>
       <li><strong>per-cell snap による再集結</strong>: dissolve→reform 移行時に各セルへ <code>snapMoment[i] ∈ [0, REFORM_S]</code> を乱数配布。<code>targetV[i] &gt; 0.4</code> の文字セルは前半、背景セルは後半に snap させ、<em>粒が個別タイミングで固まり、文字が先に立ち上がる</em>挙動を作る。一斉 lerp の crossfade 感を消す要。</li>
-      <li><strong>速度スライダー</strong>: フレーム毎の <code>dt</code> に倍率（0.5×〜8×、既定 4×）を掛けて sim 時間に変換。サイクル長もシミュレーションも同じ係数でスケールするので、テンポを変えても各位相の比は保たれる。</li>
+      <li><strong>速度スライダー</strong>: フレーム毎の <code>dt</code> に倍率（0.5×〜16×、既定 4×）を掛けて sim 時間に変換。サイクル長もシミュレーションも同じ係数でスケールするので、テンポを変えても各位相の比は保たれる。</li>
       <li><strong>禁則処理</strong>: 行分割後に <code>、。」』）</code> ぁぃぅ ャュョ などが行頭に来た場合は前行末に押し戻し、<code>「『（</code> などが行末に来た場合は次行頭へ移動。「閉じカギ括弧だけ行頭」「、だけの行」等の不自然な分割を解消。</li>
       <li><strong>crisp ハイライト</strong>: hold/ramp の lock 強度（cubic ease-in で 1→0）を文字セル（<code>targetV &gt; 0.4</code>）の RGB に乗算（最大 1.6×）。読んでいる行の文字が周囲よりはっきり光って見える。</li>
       <li><strong>挙動プリセット</strong>: mitosis / coral / spots / solitons の <code>f,k</code> ペア切替。文字の崩れ方が劇的に変わる（上のキャンバスでも試せます）。</li>
@@ -464,7 +464,7 @@
   };
   let cur = presets.coral;
   let paused = false;
-  let speedMul = 4.0; // 既定 4×、UI スライダーで 0.5×〜8× で可変
+  let speedMul = 4.0; // 既定 4×、UI スライダーで 0.5×〜16× で可変
 
   // ── 本文：羅生門 全文（青空文庫 旧字旧仮名版を起動時に fetch） ────
   let TEXT_LINES = []; // loadAndSplit() で populate
@@ -924,12 +924,12 @@
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     if (!paused){
-      // 速度倍率を dt に掛けて sim 時間を進める。暴走防止のため上限 0.15s
-      // （60fps × 8× = 0.133 まで素直に通すため）。
-      const dts = Math.min(0.15, dt * speedMul);
+      // 速度倍率を dt に掛けて sim 時間を進める。暴走防止のため上限 0.3s
+      // （60fps × 16× = 0.267 まで素直に通すため）。
+      const dts = Math.min(0.3, dt * speedMul);
       simElapsed += dts;
       stepAccum += FULL_STEPS_PER_SEC * dts;
-      let safety = 32;
+      let safety = 60;
       while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
       // 各トラックを進めて、reform は per-cell snap、それ以外は lock を適用
       for (const t of TRACKS){
