@@ -74,7 +74,7 @@
     width:100%;
     max-width:300px;
     height:auto;
-    aspect-ratio:200/360;
+    aspect-ratio:160/360;
     display:block;
     image-rendering:auto;
   }
@@ -345,7 +345,7 @@
   </section>
 
   <p class="lede">
-    「羅生門」<em>全文</em>を <em>4 本のトラック</em>（右・右中・左中・左、各 50px 幅）に並べ、各トラックが独立した
+    「羅生門」<em>全文</em>を <em>4 本のトラック</em>（右・右中・左中・左、各 40px 幅）に並べ、各トラックが独立した
     <em>静止 → 立ち上がり → 拡散 → 再集結</em> サイクルを <em>1/4 サイクルずつズラして</em> 回す。
     再集結は <em>セルごとに別タイミングで target に snap</em> させ、文字セルから先に粒として立ち上がる
     — クロスフェードではなく「<strong>粒が集まって字になる</strong>」見え方を狙う。
@@ -430,7 +430,7 @@
   <section>
     <div class="disclaimer">
       <strong>このページの canvas について</strong> ／
-      実際に Gray-Scott を走らせている（200×360 グリッド、Karl Sims 9点ラプラシアン、Canvas2D + Float32Array、180 sps × 速度倍率）。
+      実際に Gray-Scott を走らせている（160×360 グリッド、Karl Sims 9点ラプラシアン、Canvas2D + Float32Array、180 sps × 速度倍率（位相は full、sim は 8× で頭打ち））。
       本番のデモは WebGL2 の半精度 RT で同等以上の解像度を出します。
       日本語縦書きは Canvas2D <code style="font-family:var(--mono);font-size:12px">fillText</code> で 1 字ずつ流し、縦書きで崩れる文字（句読点・カギ括弧・長音/ダッシュ）だけを補正テーブルで明示的に処理。foreignObject 方式は canvas を tainted 化して <code style="font-family:var(--mono);font-size:12px">getImageData</code> が拒否されるため不可。
     </div>
@@ -445,7 +445,7 @@
 <script>
 (() => {
   // ── Gray-Scott reaction diffusion, seeded by Japanese vertical text ──
-  const SIM_W = 200, SIM_H = 360;
+  const SIM_W = 160, SIM_H = 360;
   const canvas = document.getElementById('rd');
   canvas.width = SIM_W;
   canvas.height = SIM_H;
@@ -590,13 +590,13 @@
   // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
   // 共有 u/v 上で動かし、トラックごとに x-range が違う。
   // 初期 hold 延長で CYCLE_S / N_TRACKS = 7s ずつズラす。
-  const TRACK_W = 50;            // 全トラック共通幅（50×4 = 200）
+  const TRACK_W = 40;            // 全トラック共通幅（40×4 = 160）
   // 4 トラック並列。右→右中→左中→左 の読み順。
   const TRACKS = [
-    { x0: 150, x1: 200, phase: 'hold', phaseElapsed: 0, lineIdx: 0, holdExt: 0  }, // 右
-    { x0: 100, x1: 150, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 7  }, // 右中
-    { x0: 50,  x1: 100, phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左中
-    { x0: 0,   x1: 50,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 21 }, // 左
+    { x0: 120, x1: 160, phase: 'hold', phaseElapsed: 0, lineIdx: 0, holdExt: 0  }, // 右
+    { x0: 80,  x1: 120, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 7  }, // 右中
+    { x0: 40,  x1: 80,  phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左中
+    { x0: 0,   x1: 40,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 21 }, // 左
   ];
   let nextGlobalLine = TRACKS.length; // 行 0,1,2,3 は初期表示済み → 次は 4
   // x 座標 → トラック番号の lookup（render の highlight 用）
@@ -924,11 +924,15 @@
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     if (!paused){
-      // 速度倍率を dt に掛けて sim 時間を進める。暴走防止のため上限 0.3s
-      // （60fps × 16× = 0.267 まで素直に通すため）。
+      // 位相は full speedMul で進める：テキスト入れ替わりがフルに高速
       const dts = Math.min(0.3, dt * speedMul);
       simElapsed += dts;
-      stepAccum += FULL_STEPS_PER_SEC * dts;
+      // sim は SIM_SPEED_CAP（=8×）で頭打ち：高速時の CPU 負荷を抑える
+      // 拡散パターンは 8× で進むので、speedMul=16 でもサイクルが短い分だけ
+      // パターン形成は浅くなるが、文字の切り替わりは 16× の体感が出る
+      const SIM_SPEED_CAP = 8;
+      const simDt = Math.min(0.15, dt * Math.min(speedMul, SIM_SPEED_CAP));
+      stepAccum += FULL_STEPS_PER_SEC * simDt;
       let safety = 60;
       while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
       // 各トラックを進めて、reform は per-cell snap、それ以外は lock を適用
