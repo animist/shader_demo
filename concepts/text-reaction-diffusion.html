@@ -332,31 +332,31 @@
     <h2>進行</h2>
     <ol class="phases">
       <li>
-        <time>t ≈ 0–4 s</time>
+        <time>t ≈ 0–2 s</time>
         <div>
           <h3>静止 — 読める時間</h3>
           <p>シミュレーションは走らず、V の高濃度領域が文字のグリフのまま留まる。読み手のための「間」。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 4–9 s</time>
+        <time>t ≈ 2–4 s</time>
         <div>
           <h3>立ち上がり</h3>
-          <p>反応速度が 0 から cubic ease-in で徐々に上がる。最初の1〜2秒は微細な揺らぎ程度、終盤で画数の細い部分から先に変質し始める。</p>
+          <p>反応速度が 0 から cubic ease-in で徐々に上がる。最初の1秒は微細な揺らぎ程度、終盤で画数の細い部分から先に変質し始める。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 10–25 s</time>
+        <time>t ≈ 5–20 s</time>
         <div>
           <h3>縁から侵食</h3>
-          <p>ラプラシアン項により V が隣接セルへ拡散。文字の輪郭から微細な凹凸が育ち、空白側へ滲み出す。</p>
+          <p>ラプラシアン項により V が隣接セルへ拡散。文字の輪郭から微細な凹凸が育ち、空白側へ滲み出す。<em>このあたりからプリセットごとの差が見え始める。</em></p>
         </div>
       </li>
       <li>
-        <time>t ≈ 25–60 s</time>
+        <time>t ≈ 20–60 s</time>
         <div>
-          <h3>分裂と増殖</h3>
-          <p>mitosis 型パラメータ <code>f=0.0367, k=0.0649</code> が効き、文字の形は失われ、胞子状の模様が広がる。「闇」「下」のような画数の多い字ほど崩壊の中心になりやすい。</p>
+          <h3>分裂と増殖（または別の崩壊形）</h3>
+          <p>選んだプリセットの <code>f, k</code> が支配的になる。mitosis なら胞子状の枝分かれ、coral なら細胞状の充填、spots なら孤立点、chaos なら不規則な滲み。同じ初期文字から劇的に違う模様が育つ。</p>
         </div>
       </li>
       <li>
@@ -434,8 +434,8 @@
   let paused = false;
 
   // Pacing: 文字を読める時間を確保 → 極めて緩やかに崩壊が始まる
-  const HOLD_S = 4;             // この秒数は完全に静止して文字が読める
-  const RAMP_S = 5;             // この秒数かけて速度 0→1（cubic ease-in）
+  const HOLD_S = 2;             // この秒数は完全に静止して文字が読める
+  const RAMP_S = 2;             // この秒数かけて速度 0→1（cubic ease-in）
   const FULL_STEPS_PER_SEC = 180; // 全速力での 1 秒あたりのシミュレーションステップ数（旧来 3step×60fps）
   let simElapsed = 0;          // 一時停止を除いた経過秒
   let stepAccum = 0;           // 蓄積したステップ数の小数部
@@ -488,18 +488,28 @@
   }
 
   function step(){
+    // Karl Sims 9点ラプラシアン: 0.2*隣4 + 0.05*斜4 - 1.0*中心 （値域 [-1,+1] で安定）
+    // 既存 demos/reaction-diffusion.html (GLSL) と同じ離散化
     const DU = 1.0, DV = 0.5;
     const f = cur.f, k = cur.k;
+    const W = SIM_W;
     for (let y = 1; y < SIM_H - 1; y++){
-      const row = y * SIM_W;
-      for (let x = 1; x < SIM_W - 1; x++){
+      const row = y * W;
+      for (let x = 1; x < W - 1; x++){
         const i = row + x;
         const uc = u[i], vc = v[i];
-        const lU = u[i-SIM_W] + u[i+SIM_W] + u[i-1] + u[i+1] - 4*uc;
-        const lV = v[i-SIM_W] + v[i+SIM_W] + v[i-1] + v[i+1] - 4*vc;
+        const lU = 0.20*(u[i-W] + u[i+W] + u[i-1] + u[i+1])
+                 + 0.05*(u[i-W-1] + u[i-W+1] + u[i+W-1] + u[i+W+1])
+                 - uc;
+        const lV = 0.20*(v[i-W] + v[i+W] + v[i-1] + v[i+1])
+                 + 0.05*(v[i-W-1] + v[i-W+1] + v[i+W-1] + v[i+W+1])
+                 - vc;
         const uvv = uc * vc * vc;
-        u2[i] = uc + DU * lU - uvv + f * (1 - uc);
-        v2[i] = vc + DV * lV + uvv - (f + k) * vc;
+        const un = uc + DU * lU - uvv + f * (1 - uc);
+        const vn = vc + DV * lV + uvv - (f + k) * vc;
+        // 物理範囲 [0,1] にクランプ（数値暴走の保険）
+        u2[i] = un < 0 ? 0 : un > 1 ? 1 : un;
+        v2[i] = vn < 0 ? 0 : vn > 1 ? 1 : vn;
       }
     }
     u.set(u2); v.set(v2);
