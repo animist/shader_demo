@@ -552,17 +552,38 @@
       const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const img = new Image();
-      img.onload = () => {
-        const off = document.createElement('canvas');
-        off.width = w; off.height = h;
-        const o = off.getContext('2d');
-        o.fillStyle = '#000'; o.fillRect(0, 0, w, h);
-        o.drawImage(img, 0, 0);
-        const data = o.getImageData(0, 0, w, h);
+      let settled = false;
+      // 5 秒で settle しなければ強制的に reject（fonts.ready 後の SVG 描画が
+      // 一部ブラウザで onload/onerror どちらも上がらないケースがあるため）
+      const watchdog = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         URL.revokeObjectURL(url);
-        resolve(data);
+        reject(new Error('SVG render timeout: ' + JSON.stringify(lineText.slice(0,20))));
+      }, 5000);
+      img.onload = () => {
+        if (settled) return; settled = true;
+        clearTimeout(watchdog);
+        try {
+          const off = document.createElement('canvas');
+          off.width = w; off.height = h;
+          const o = off.getContext('2d');
+          o.fillStyle = '#000'; o.fillRect(0, 0, w, h);
+          o.drawImage(img, 0, 0);
+          const data = o.getImageData(0, 0, w, h);
+          URL.revokeObjectURL(url);
+          resolve(data);
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          reject(e);
+        }
       };
-      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+      img.onerror = (e) => {
+        if (settled) return; settled = true;
+        clearTimeout(watchdog);
+        URL.revokeObjectURL(url);
+        reject(new Error('SVG image load error: ' + (e && e.message || 'unknown')));
+      };
       img.src = url;
     });
   }
