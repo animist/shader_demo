@@ -332,35 +332,35 @@
     <h2>進行</h2>
     <ol class="phases">
       <li>
-        <time>t ≈ 0–8 s</time>
+        <time>t ≈ 0–4 s</time>
         <div>
           <h3>静止 — 読める時間</h3>
           <p>シミュレーションは走らず、V の高濃度領域が文字のグリフのまま留まる。読み手のための「間」。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 8–18 s</time>
+        <time>t ≈ 4–9 s</time>
         <div>
           <h3>立ち上がり</h3>
-          <p>反応速度が 0 から cubic ease-in で徐々に上がる。最初の数秒は微細な揺らぎ程度。終盤で画数の細い部分から先に変質し始める。</p>
+          <p>反応速度が 0 から cubic ease-in で徐々に上がる。最初の1〜2秒は微細な揺らぎ程度、終盤で画数の細い部分から先に変質し始める。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 20–50 s</time>
+        <time>t ≈ 10–25 s</time>
         <div>
           <h3>縁から侵食</h3>
           <p>ラプラシアン項により V が隣接セルへ拡散。文字の輪郭から微細な凹凸が育ち、空白側へ滲み出す。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 50–120 s</time>
+        <time>t ≈ 25–60 s</time>
         <div>
           <h3>分裂と増殖</h3>
           <p>mitosis 型パラメータ <code>f=0.0367, k=0.0649</code> が効き、文字の形は失われ、胞子状の模様が広がる。「闇」「下」のような画数の多い字ほど崩壊の中心になりやすい。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 2 min ~</time>
+        <time>t ≈ 1 min ~</time>
         <div>
           <h3>言葉だった残響</h3>
           <p>もはや読めない。だが本文の配置 — 縦書きの列という骨格 — は、模様の流れの<em>傾向</em>として残る。完全に均質な模様にはならない。</p>
@@ -434,9 +434,9 @@
   let paused = false;
 
   // Pacing: 文字を読める時間を確保 → 極めて緩やかに崩壊が始まる
-  const HOLD_S = 8;            // この秒数は完全に静止して文字が読める
-  const RAMP_S = 10;           // この秒数かけて速度 0→1（cubic ease-in）
-  const FULL_STEPS_PER_SEC = 95; // 全速力での 1 秒あたりのシミュレーションステップ数
+  const HOLD_S = 4;             // この秒数は完全に静止して文字が読める
+  const RAMP_S = 5;             // この秒数かけて速度 0→1（cubic ease-in）
+  const FULL_STEPS_PER_SEC = 180; // 全速力での 1 秒あたりのシミュレーションステップ数（旧来 3step×60fps）
   let simElapsed = 0;          // 一時停止を除いた経過秒
   let stepAccum = 0;           // 蓄積したステップ数の小数部
   let lastFrame = performance.now();
