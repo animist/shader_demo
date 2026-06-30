@@ -323,51 +323,54 @@
   </section>
 
   <p class="lede">
-    「羅生門」冒頭の段落を一行ずつ、Gray-Scott 反応拡散モデルの <em>V チャンネル</em> に種として注入する。
-    文字は読める姿で現れ、ラプラシアン項によって隣接セルへ濃度を漏らし、自己組織化した模様に置き換わる。
-    模様が拡散しきった頃、<em>次の行</em>が target 形状として呼び込まれ、現在の V/U 値がそこへ引き寄せられる
-    — <strong>読み終わる前に模様になり、模様の中から次の言葉が再び集まる</strong>。13 行で一段落、終端でループ。
+    「羅生門」冒頭の段落を <em>3 本のトラック</em>（右・中・左）に並べ、各トラックが独立した
+    <em>静止 → 立ち上がり → 拡散 → 再集結</em> サイクルを <em>7 秒ずつズラして</em> 回す。
+    あるトラックが読める姿で立っているとき、別のトラックは模様に解け、また別のトラックは
+    模様から次の行を集めている。<strong>読み終わる前に模様になり、隣の模様から次の言葉が再び立ち上がる</strong>。
+    13 行で一段落、終端で 1 行目へループ。
   </p>
 
   <section>
     <h2>進行</h2>
     <p style="font-size:14.5px;color:var(--ink-mute);line-height:1.9;margin:0 0 24px">
-      1サイクル ≈ 21 秒。これを 13 行ぶん繰り返して段落を読み進める。
+      各トラックは独立な 21 秒サイクル。<code>sim</code> は常時全速力で回し、位相は
+      <em>target に向かう lock 強度</em>（hold=1.0 / ramp=<code>1−p³</code> / dissolve=0 / reform=<code>1−(1−p)³</code>）
+      でだけ表現する。初期の hold 延長で 7 秒ずつズラし、定常状態に入る。
     </p>
     <ol class="phases">
       <li>
         <time>2 s</time>
         <div>
-          <h3>静止 — 行を読む</h3>
-          <p>反応拡散は走らず、V の高濃度領域が現在の行のグリフのまま留まる。読み手のための「間」。</p>
+          <h3>静止 — 行を読む（lock = 1）</h3>
+          <p>毎フレーム target の値で完全に上書き。sim はトラックの外側で進むが、このトラックは text のまま留まる。</p>
         </div>
       </li>
       <li>
         <time>2 s</time>
         <div>
-          <h3>立ち上がり</h3>
-          <p>反応速度が 0 から cubic ease-in で徐々に上がる。最初の1秒は微細な揺らぎ程度、終盤で画数の細い部分から先に変質し始める。</p>
+          <h3>立ち上がり（lock = 1−p³）</h3>
+          <p>lock が cubic ease-in で 1 → 0 に解放される。最初は固く保たれ、終盤で急に sim に明け渡される。画数の細い部分から先に変質する。</p>
         </div>
       </li>
       <li>
         <time>14 s</time>
         <div>
-          <h3>拡散 — ばらばらになる</h3>
-          <p>選んだプリセットの <code>f, k</code> が支配的になる。mitosis なら胞子状の枝分かれ、coral なら細胞状の充填、spots なら孤立点、chaos なら不規則な滲み。文字は消え、模様だけが残る。</p>
+          <h3>拡散（lock = 0）</h3>
+          <p>このトラックは sim 任せ。プリセットの <code>f, k</code> に従って固有の崩れ方をする。mitosis なら胞子状、coral なら細胞状、spots なら孤立点、chaos なら不規則な滲み。</p>
         </div>
       </li>
       <li>
         <time>3 s</time>
         <div>
-          <h3>再集結 — 次の行が現れる</h3>
-          <p>次の行のグリフを target として用意し、現在の V/U 値を <em>per-frame で target に向けて引き寄せる</em>。同時にシミュレーションも 30% 速度で走らせ続け、模様が churning しながら新しい文字へ集まる。終わりで target に snap。</p>
+          <h3>再集結 — 次の行（lock = 1−(1−p)³）</h3>
+          <p>そのトラックの x-range に <em>次の行のグリフ</em>を target として焼き込み、lock を cubic ease-out で 0 → 1 に上げる。sim が churning する中、新しい文字が引き寄せられて立ち上がる。終端で target に snap。</p>
         </div>
       </li>
       <li>
         <time>↻</time>
         <div>
-          <h3>13 行 × 21 秒 ≈ 4:30 のループ</h3>
-          <p>「羅生門」冒頭の段落を 13 行に分け、順に巡る。最終行の再集結が完了すると 1 行目へ戻る。</p>
+          <h3>3 トラック並列 / 7 秒ズレ / global counter</h3>
+          <p>初期 hold を 0s / 7s / 14s で延長して定常状態へ。reform を抜ける順に <em>nextGlobalLine</em> から行番号を払い出すので、読み順 0→1→2→3→… が保持される。最終行の reform 完了でループ。</p>
         </div>
       </li>
     </ol>
@@ -459,66 +462,150 @@
   const RAMP_S = 2;              // 立ち上がり（cubic ease-in）
   const DISSOLVE_S = 14;         // 全速力で拡散
   const REFORM_S = 3;            // 次の行へ再集結
+  const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 21s
   const FULL_STEPS_PER_SEC = 180;
-  const REFORM_SIM_RATE = 0.30;  // 再集結中も sim を回す比率（churning 感）
+
+  // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
+  // 共有 u/v 上で動かし、トラックごとに x-range が違う。
+  // 初期 hold 延長で CYCLE_S / N_TRACKS = 7s ずつズラす。
+  const TRACKS = [
+    { x0: 134, x1: 200, phase: 'hold', phaseElapsed: 0, lineIdx: 0, holdExt: 0  }, // 右
+    { x0: 67,  x1: 134, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 7  }, // 中
+    { x0: 0,   x1: 67,  phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左
+  ];
+  let nextGlobalLine = TRACKS.length; // 行 0,1,2 は初期表示済み → 次は 3
 
   // ── 状態 ─────────────────────────────────────────────
-  let currentLineIdx = 0;
-  let phase = 'hold';            // 'hold' | 'ramp' | 'dissolve' | 'reform'
-  let phaseElapsed = 0;
-  let simElapsed = 0;            // 通算経過秒（一時停止除く）
+  let simElapsed = 0;
   let stepAccum = 0;
   let lastFrame = performance.now();
 
-  // ── target（次の行のグリフ形状）と current の引き寄せ用 ──
+  // 各トラックの target（次の行のグリフ）を焼き込むための共有バッファ。
+  // 全トラック分の target 値を 1 枚に持つ：各セルは「自分が属するトラックの target」だけ参照される。
   const targetU = new Float32Array(SIM_W * SIM_H);
   const targetV = new Float32Array(SIM_W * SIM_H);
-  // 縦書きテキストを画像化して outU/outV に焼き込む
-  function renderTextTo(lineText, outU, outV){
-    outU.fill(1.0); outV.fill(0.0);
+
+  // 縦書きテキストを [x0, x1) の x-range にだけ書き込む（その範囲外は変更しない）
+  function renderLineInRange(lineText, outU, outV, x0, x1){
+    const tw = x1 - x0;
     const off = document.createElement('canvas');
-    off.width = SIM_W; off.height = SIM_H;
+    off.width = tw; off.height = SIM_H;
     const o = off.getContext('2d');
-    o.fillStyle = '#000'; o.fillRect(0, 0, SIM_W, SIM_H);
+    o.fillStyle = '#000'; o.fillRect(0, 0, tw, SIM_H);
     o.fillStyle = '#fff'; o.textBaseline = 'top';
-    const fs = 16;
-    o.font = `600 ${fs}px "Hiragino Mincho ProN","YuMincho","Yu Mincho",serif`;
-    const colSpacing = 22, lineH = 18, startX = SIM_W - 24, startY = 22;
-    let col = 0, yPos = startY;
+    o.font = `600 16px "Hiragino Mincho ProN","YuMincho","Yu Mincho",serif`;
+    const colSpacing = 22, lineH = 18;
+    const sx = tw - 18, sy = 22; // 各トラック内で右上から始める
+    let col = 0, yPos = sy;
     for (const ch of lineText){
-      if (yPos > SIM_H - 24){ col++; yPos = startY; }
-      const x = startX - col * colSpacing;
-      if (x < 18) break;
+      if (yPos > SIM_H - 22){ col++; yPos = sy; }
+      const x = sx - col * colSpacing;
+      if (x < 4) break;
       o.fillText(ch, x, yPos);
       yPos += lineH;
     }
-    const img = o.getImageData(0, 0, SIM_W, SIM_H);
-    for (let i = 0; i < SIM_W * SIM_H; i++){
-      const lum = img.data[i*4];
-      if (lum > 80){
-        const w = lum / 255;
-        outV[i] = 0.55 + w * 0.4;
-        outU[i] = 0.05 + (1 - w) * 0.4;
+    const img = o.getImageData(0, 0, tw, SIM_H);
+    for (let y = 0; y < SIM_H; y++){
+      const imgRow = y * tw;
+      const outRow = y * SIM_W;
+      for (let x = 0; x < tw; x++){
+        const i = outRow + x0 + x;
+        const lum = img.data[(imgRow + x) * 4];
+        if (lum > 80){
+          const w = lum / 255;
+          outV[i] = 0.55 + w * 0.4;
+          outU[i] = 0.05 + (1 - w) * 0.4;
+        } else {
+          outV[i] = 0;
+          outU[i] = 1;
+        }
       }
     }
   }
 
-  function seedFromLine(idx){
-    currentLineIdx = ((idx % TEXT_LINES.length) + TEXT_LINES.length) % TEXT_LINES.length;
-    renderTextTo(TEXT_LINES[currentLineIdx], targetU, targetV);
-    u.set(targetU); v.set(targetV);
-    phase = 'hold'; phaseElapsed = 0;
-    stepAccum = 0;
-    lastFrame = performance.now();
+  // トラックの x-range セルを target に向けて lock（強度 0..1）で引き寄せる。
+  // lock=1 で完全 snap、lock=0 で何もしない（sim 自由）。
+  function applyTrackLock(t, lock){
+    if (lock <= 0) return;
+    for (let y = 0; y < SIM_H; y++){
+      const row = y * SIM_W;
+      for (let x = t.x0; x < t.x1; x++){
+        const i = row + x;
+        u[i] = u[i] + (targetU[i] - u[i]) * lock;
+        v[i] = v[i] + (targetV[i] - v[i]) * lock;
+      }
+    }
   }
-  function restartFromTop(){ simElapsed = 0; seedFromLine(0); }
 
-  // 任意のタイミングで「次の行」へ jump（dissolve 後でなくても可）
-  function startReformToNext(){
-    const nextIdx = (currentLineIdx + 1) % TEXT_LINES.length;
-    renderTextTo(TEXT_LINES[nextIdx], targetU, targetV);
-    currentLineIdx = nextIdx;
-    phase = 'reform'; phaseElapsed = 0;
+  // 位相に応じた lock 強度
+  function lockStrength(t){
+    if (t.phase === 'hold') return 1.0;
+    if (t.phase === 'ramp'){
+      const p = Math.min(1, t.phaseElapsed / RAMP_S);
+      return 1 - p * p * p;           // cubic ease-in 解放：最初は固く、終盤で急に解ける
+    }
+    if (t.phase === 'dissolve') return 0;
+    if (t.phase === 'reform'){
+      const p = Math.min(1, t.phaseElapsed / REFORM_S);
+      return 1 - (1 - p) * (1 - p) * (1 - p); // cubic ease-out で集結
+    }
+    return 0;
+  }
+
+  // 1 トラック分の位相を進める。reform→hold で次の行に進む（global counter から）。
+  function advanceTrack(t, dt){
+    t.phaseElapsed += dt;
+    if (t.phase === 'hold'){
+      const dur = HOLD_S + (t.holdExt || 0);
+      if (t.phaseElapsed >= dur){
+        t.phase = 'ramp'; t.phaseElapsed = 0; t.holdExt = 0;
+      }
+    } else if (t.phase === 'ramp'){
+      if (t.phaseElapsed >= RAMP_S){ t.phase = 'dissolve'; t.phaseElapsed = 0; }
+    } else if (t.phase === 'dissolve'){
+      if (t.phaseElapsed >= DISSOLVE_S){
+        t.lineIdx = nextGlobalLine % TEXT_LINES.length;
+        nextGlobalLine++;
+        renderLineInRange(TEXT_LINES[t.lineIdx], targetU, targetV, t.x0, t.x1);
+        t.phase = 'reform'; t.phaseElapsed = 0;
+      }
+    } else if (t.phase === 'reform'){
+      if (t.phaseElapsed >= REFORM_S){
+        t.phase = 'hold'; t.phaseElapsed = 0;
+        // 行頭は完全に target に snap（クリーンな読める状態）
+        for (let y = 0; y < SIM_H; y++){
+          const row = y * SIM_W;
+          for (let x = t.x0; x < t.x1; x++){
+            const i = row + x;
+            u[i] = targetU[i]; v[i] = targetV[i];
+          }
+        }
+      }
+    }
+  }
+
+  function initTracks(){
+    // 全 target を一度クリア（背景値）
+    targetU.fill(1.0); targetV.fill(0.0);
+    // 各トラックに自分の初期行を焼き込む
+    for (const t of TRACKS){
+      renderLineInRange(TEXT_LINES[t.lineIdx], targetU, targetV, t.x0, t.x1);
+    }
+    // u, v を target に揃える（最初は全部読める状態）
+    u.set(targetU); v.set(targetV);
+  }
+
+  function restartFromTop(){
+    simElapsed = 0; stepAccum = 0;
+    nextGlobalLine = TRACKS.length;
+    for (let i = 0; i < TRACKS.length; i++){
+      TRACKS[i].phase = 'hold';
+      TRACKS[i].phaseElapsed = 0;
+      TRACKS[i].lineIdx = i;
+      TRACKS[i].holdExt = i * (CYCLE_S / TRACKS.length); // 0, 7, 14
+    }
+    initTracks();
+    lastFrame = performance.now();
   }
 
   function step(){
@@ -565,77 +652,37 @@
   }
 
   const timerEl = document.getElementById('timer');
+  // 表示用ラベル：それぞれのトラックの位相を 1 文字で
+  function trackGlyph(t){
+    if (t.phase === 'hold')     return '■';   // 読める
+    if (t.phase === 'ramp')     return '▾';   // 解放中
+    if (t.phase === 'dissolve') return '·';   // 拡散
+    if (t.phase === 'reform')   return '▴';   // 集結
+    return '?';
+  }
   function updateTimer(){
     const mm = String(Math.floor(simElapsed / 60)).padStart(2, '0');
     const ss = String(Math.floor(simElapsed % 60)).padStart(2, '0');
-    const lineLabel = `${currentLineIdx + 1}/${TEXT_LINES.length}`;
-    let phaseStr;
-    if (paused){
-      phaseStr = '一時停止';
-    } else if (phase === 'hold'){
-      phaseStr = '静止 — 行を読む';
-    } else if (phase === 'ramp'){
-      const p = Math.min(1, phaseElapsed / RAMP_S);
-      phaseStr = '立ち上がり ' + Math.round(p * p * p * 100) + '%';
-    } else if (phase === 'dissolve'){
-      phaseStr = '拡散中';
-    } else if (phase === 'reform'){
-      const p = Math.min(1, phaseElapsed / REFORM_S);
-      phaseStr = '再集結 ' + Math.round(p * 100) + '%';
-    }
-    timerEl.textContent = `t = ${mm}:${ss}  ·  行 ${lineLabel} · ${phaseStr}`;
-  }
-
-  // 再集結中の引き寄せ：current の V/U 値を target に向けて毎フレーム pull
-  function applyReformPull(strength){
-    for (let i = 0; i < SIM_W * SIM_H; i++){
-      u[i] += strength * (targetU[i] - u[i]);
-      v[i] += strength * (targetV[i] - v[i]);
-    }
+    // 右(R) / 中(M) / 左(L) の順で表示
+    const sym = TRACKS.map(t => `${trackGlyph(t)}${t.lineIdx+1}`).join(' ');
+    const pauseTag = paused ? ' · 一時停止' : '';
+    timerEl.textContent = `t = ${mm}:${ss}  ·  ${sym}${pauseTag}`;
   }
 
   let raf;
   function loop(now){
-    const dt = Math.min(0.1, (now - lastFrame) / 1000); // タブ復帰時の巨大 dt を抑える
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     if (!paused){
       simElapsed += dt;
-      phaseElapsed += dt;
-
-      if (phase === 'hold'){
-        if (phaseElapsed >= HOLD_S){ phase = 'ramp'; phaseElapsed = 0; }
-      } else if (phase === 'ramp'){
-        const p = Math.min(1, phaseElapsed / RAMP_S);
-        const s = p * p * p;
-        stepAccum += s * FULL_STEPS_PER_SEC * dt;
-        let safety = 24;
-        while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
-        if (phaseElapsed >= RAMP_S){ phase = 'dissolve'; phaseElapsed = 0; }
-      } else if (phase === 'dissolve'){
-        stepAccum += FULL_STEPS_PER_SEC * dt;
-        let safety = 24;
-        while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
-        if (phaseElapsed >= DISSOLVE_S){
-          // 次の行を target にして reform へ
-          const nextIdx = (currentLineIdx + 1) % TEXT_LINES.length;
-          renderTextTo(TEXT_LINES[nextIdx], targetU, targetV);
-          currentLineIdx = nextIdx;
-          phase = 'reform'; phaseElapsed = 0;
-        }
-      } else if (phase === 'reform'){
-        // sim を低速で回しつつ target へ pull（churning しながら集まる）
-        stepAccum += FULL_STEPS_PER_SEC * REFORM_SIM_RATE * dt;
-        let safety = 24;
-        while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
-        const p = Math.min(1, phaseElapsed / REFORM_S);
-        // 0.01 → 0.15 へ強くなる（毎フレーム適用、60fps × 3s で十分集まる）
-        const pullStrength = 0.01 + p * 0.14;
-        applyReformPull(pullStrength);
-        if (p >= 1){
-          // 行頭は target に snap してクリーンな状態にする
-          u.set(targetU); v.set(targetV);
-          phase = 'hold'; phaseElapsed = 0;
-        }
+      // sim は常に全速力で回す（位相は各トラックの lock 強度で表現）
+      stepAccum += FULL_STEPS_PER_SEC * dt;
+      let safety = 24;
+      while (stepAccum >= 1 && safety-- > 0){ step(); stepAccum -= 1; }
+      // 各トラックを進めて lock を適用
+      for (const t of TRACKS){
+        advanceTrack(t, dt);
+        applyTrackLock(t, lockStrength(t));
       }
     }
     render();
@@ -643,12 +690,25 @@
     raf = requestAnimationFrame(loop);
   }
 
-  document.getElementById('reset').addEventListener('click', () => {
-    restartFromTop();
-  });
-  document.getElementById('next').addEventListener('click', () => {
-    startReformToNext();
-  });
+  // 任意のタイミングで「次の行」へジャンプ：1 つも reform/hold/ramp が無ければ全て dissolve のはず、
+  // その場合は最も dissolve が長く進んでいるトラックを reform に進める。
+  function jumpNextReform(){
+    let pick = TRACKS[0], best = -1;
+    for (const t of TRACKS){
+      const score = (t.phase === 'dissolve') ? t.phaseElapsed
+                  : (t.phase === 'ramp')     ? RAMP_S + t.phaseElapsed
+                  : (t.phase === 'hold')     ? RAMP_S + DISSOLVE_S + t.phaseElapsed
+                  : -100; // reform は対象外
+      if (score > best){ best = score; pick = t; }
+    }
+    pick.lineIdx = nextGlobalLine % TEXT_LINES.length;
+    nextGlobalLine++;
+    renderLineInRange(TEXT_LINES[pick.lineIdx], targetU, targetV, pick.x0, pick.x1);
+    pick.phase = 'reform'; pick.phaseElapsed = 0;
+  }
+
+  document.getElementById('reset').addEventListener('click', () => { restartFromTop(); });
+  document.getElementById('next').addEventListener('click', () => { jumpNextReform(); });
   document.getElementById('pause').addEventListener('click', (e) => {
     paused = !paused;
     e.currentTarget.textContent = paused ? '再開' : '一時停止';
