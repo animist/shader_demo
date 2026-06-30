@@ -332,24 +332,31 @@
     <h2>進行</h2>
     <ol class="phases">
       <li>
-        <time>t ≈ 0 s</time>
+        <time>t ≈ 0–8 s</time>
         <div>
-          <h3>文字、まだ読める</h3>
-          <p>シミュレーション開始直後。V の高濃度領域が、そのまま文字のグリフを描いている。背景はほぼ純粋な U（基質）。</p>
+          <h3>静止 — 読める時間</h3>
+          <p>シミュレーションは走らず、V の高濃度領域が文字のグリフのまま留まる。読み手のための「間」。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 10–30 s</time>
+        <time>t ≈ 8–18 s</time>
+        <div>
+          <h3>立ち上がり</h3>
+          <p>反応速度が 0 から cubic ease-in で徐々に上がる。最初の数秒は微細な揺らぎ程度。終盤で画数の細い部分から先に変質し始める。</p>
+        </div>
+      </li>
+      <li>
+        <time>t ≈ 20–50 s</time>
         <div>
           <h3>縁から侵食</h3>
-          <p>ラプラシアン項により V が隣接セルへ拡散し始める。文字の輪郭から微細な凹凸が育ち、画数の細い部分から先に変質する。</p>
+          <p>ラプラシアン項により V が隣接セルへ拡散。文字の輪郭から微細な凹凸が育ち、空白側へ滲み出す。</p>
         </div>
       </li>
       <li>
-        <time>t ≈ 30–90 s</time>
+        <time>t ≈ 50–120 s</time>
         <div>
           <h3>分裂と増殖</h3>
-          <p>mitosis 型パラメータ <code>f=0.0367, k=0.0649</code> が効き始め、文字の形は失われ、胞子状の模様が空白側へ広がる。「闇」「下」のような画数の多い字ほど崩壊の中心になりやすい。</p>
+          <p>mitosis 型パラメータ <code>f=0.0367, k=0.0649</code> が効き、文字の形は失われ、胞子状の模様が広がる。「闇」「下」のような画数の多い字ほど崩壊の中心になりやすい。</p>
         </div>
       </li>
       <li>
@@ -425,7 +432,14 @@
   };
   let cur = presets.mitosis;
   let paused = false;
-  let startTime = performance.now();
+
+  // Pacing: 文字を読める時間を確保 → 極めて緩やかに崩壊が始まる
+  const HOLD_S = 8;            // この秒数は完全に静止して文字が読める
+  const RAMP_S = 10;           // この秒数かけて速度 0→1（cubic ease-in）
+  const FULL_STEPS_PER_SEC = 95; // 全速力での 1 秒あたりのシミュレーションステップ数
+  let simElapsed = 0;          // 一時停止を除いた経過秒
+  let stepAccum = 0;           // 蓄積したステップ数の小数部
+  let lastFrame = performance.now();
 
   function seedText(){
     u.fill(1.0);
@@ -468,7 +482,9 @@
         u[i] = 0.05 + (1 - w) * 0.4;
       }
     }
-    startTime = performance.now();
+    simElapsed = 0;
+    stepAccum = 0;
+    lastFrame = performance.now();
   }
 
   function step(){
@@ -505,20 +521,44 @@
   }
 
   const timerEl = document.getElementById('timer');
-  function updateTimer(){
-    const e = (performance.now() - startTime) / 1000;
-    const mm = String(Math.floor(e / 60)).padStart(2, '0');
-    const ss = String(Math.floor(e % 60)).padStart(2, '0');
-    timerEl.textContent = `t = ${mm}:${ss}`;
+  function updateTimer(speed){
+    const mm = String(Math.floor(simElapsed / 60)).padStart(2, '0');
+    const ss = String(Math.floor(simElapsed % 60)).padStart(2, '0');
+    let phase;
+    if (speed < 0)         phase = '一時停止';
+    else if (speed === 0)  phase = '静止 — 文字を読める時間';
+    else if (speed < 1)    phase = '立ち上がり ' + Math.round(speed * 100) + '%';
+    else                   phase = '進行中';
+    timerEl.textContent = `t = ${mm}:${ss}  ·  ${phase}`;
+  }
+
+  // 0→1 の cubic ease-in: 最初は本当にゆっくり、後半で加速
+  function simSpeed(){
+    if (simElapsed < HOLD_S) return 0;
+    const p = (simElapsed - HOLD_S) / RAMP_S;
+    if (p >= 1) return 1;
+    return p * p * p;
   }
 
   let raf;
-  function loop(){
+  function loop(now){
+    const dt = Math.min(0.1, (now - lastFrame) / 1000); // タブ復帰時の巨大 dt を抑える
+    lastFrame = now;
+    let s = 0;
     if (!paused){
-      step(); step(); step();
+      simElapsed += dt;
+      s = simSpeed();
+      if (s > 0){
+        stepAccum += s * FULL_STEPS_PER_SEC * dt;
+        let safety = 12;
+        while (stepAccum >= 1 && safety-- > 0){
+          step();
+          stepAccum -= 1;
+        }
+      }
     }
     render();
-    updateTimer();
+    updateTimer(paused ? -1 : s);
     raf = requestAnimationFrame(loop);
   }
 
@@ -534,10 +574,10 @@
   });
 
   if (document.fonts && document.fonts.ready){
-    document.fonts.ready.then(() => { seedText(); loop(); });
+    document.fonts.ready.then(() => { seedText(); requestAnimationFrame(loop); });
   } else {
     seedText();
-    loop();
+    requestAnimationFrame(loop);
   }
 })();
 </script>
