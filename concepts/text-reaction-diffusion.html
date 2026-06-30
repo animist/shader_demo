@@ -507,9 +507,10 @@
   const REFORM_S = 3;            // 次の行へ再集結
   const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 21s
   const FULL_STEPS_PER_SEC = 180;
-  const BG_LOCK_MUL = 0.2;       // hold/ramp の lock：背景セルにはこの倍率だけ掛ける
-                                 // （文字セルは 1.0）→ 隣レーンの拡散パターンが
-                                 //   背景に滲み込めるようにしてレーン境界を緩める。
+  const BG_LOCK_MUL = 0;         // hold/ramp の lock：背景セルにはこの倍率を掛ける（0 = 全く lock しない）
+                                 // 文字セルは 1.0 のまま anchor。0 にすると背景が完全に
+                                 // sim 任せになり、隣レーンで進んでいる拡散が背景を経由
+                                 // して canvas 全体へ自由に流れ込む（レーン境界の縦線が消える）。
 
   // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
   // 共有 u/v 上で動かし、トラックごとに x-range が違う。
