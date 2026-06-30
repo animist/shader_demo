@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0c0a08">
+<title>文字が育つ反応拡散 — 概念モック</title>
+<style>
+  :root{
+    --ground:#0c0a08;
+    --surf-1:#141210;
+    --surf-2:#1a1814;
+    --hairline:#2a2620;
+    --ink:#dcd2bd;
+    --ink-mute:#8a8276;
+    --ink-faint:#5a544c;
+    --live:#7fe6c0;
+    --decay:#b5573a;
+    --serif:"Hiragino Mincho ProN","YuMincho","Yu Mincho","Songti SC","Noto Serif JP","Times New Roman",serif;
+    --gothic:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP","Segoe UI",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{background:var(--ground);color:var(--ink)}
+  body{
+    margin:0;
+    font-family:var(--serif);
+    font-size:16px;
+    line-height:1.85;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  .wrap{max-width:660px;margin:0 auto;padding:60px 28px 110px}
+
+  .eyebrow{
+    font-family:var(--gothic);
+    font-size:11px;
+    letter-spacing:.24em;
+    color:var(--decay);
+    text-transform:uppercase;
+    margin:0;
+    font-weight:700;
+  }
+  h1{
+    font-family:var(--serif);
+    font-size:40px;
+    line-height:1.22;
+    font-weight:600;
+    margin:14px 0 12px;
+    text-wrap:balance;
+    letter-spacing:.01em;
+  }
+  h1 .kanji{color:var(--ink)}
+  .sub{
+    font-family:var(--gothic);
+    font-size:13px;
+    color:var(--ink-mute);
+    margin:0 0 46px;
+    letter-spacing:.04em;
+  }
+
+  /* ── Hero canvas ───────────────────────────────────────── */
+  .demo{margin:0 0 48px}
+  .stage{
+    background:#040302;
+    border:1px solid var(--hairline);
+    padding:22px;
+    display:flex;
+    justify-content:center;
+    overflow:hidden;
+  }
+  canvas#rd{
+    width:100%;
+    max-width:300px;
+    height:auto;
+    aspect-ratio:200/360;
+    display:block;
+    image-rendering:auto;
+  }
+  .meta{
+    display:flex;
+    align-items:center;
+    margin-top:14px;
+    gap:18px;
+    flex-wrap:wrap;
+    font-family:var(--gothic);
+  }
+  .meta .label{
+    font-size:11px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+  }
+  .meta .timer{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--ink-mute);
+    font-variant-numeric:tabular-nums;
+    margin-left:auto;
+  }
+  .controls{
+    display:flex;
+    gap:10px;
+    margin-top:20px;
+    flex-wrap:wrap;
+  }
+  .btn,.sel{
+    background:var(--surf-1);
+    border:1px solid var(--hairline);
+    color:var(--ink);
+    padding:10px 16px;
+    font-size:13px;
+    font-family:var(--gothic);
+    letter-spacing:.04em;
+    cursor:pointer;
+    border-radius:1px;
+    appearance:none;
+    -webkit-appearance:none;
+  }
+  .btn:hover,.sel:hover{border-color:var(--ink-mute);background:var(--surf-2)}
+  .btn:focus-visible,.sel:focus-visible{outline:1px solid var(--live);outline-offset:2px}
+  .sel{padding-right:32px;background-image:linear-gradient(45deg,transparent 50%,var(--ink-mute) 50%),linear-gradient(135deg,var(--ink-mute) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+
+  /* ── Sections ──────────────────────────────────────────── */
+  h2{
+    font-family:var(--gothic);
+    font-size:11px;
+    letter-spacing:.28em;
+    text-transform:uppercase;
+    color:var(--ink-mute);
+    font-weight:700;
+    margin:72px 0 28px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--hairline);
+  }
+
+  p{margin:0 0 18px}
+  .lede{
+    font-size:17px;
+    line-height:2;
+    color:var(--ink);
+    max-width:38em;
+  }
+  .lede em{
+    font-style:normal;
+    color:var(--live);
+    border-bottom:1px solid color-mix(in srgb,var(--live) 30%,transparent);
+  }
+
+  /* ── Phases timeline ───────────────────────────────────── */
+  .phases{
+    list-style:none;
+    padding:0;
+    margin:0;
+    display:flex;
+    flex-direction:column;
+    gap:30px;
+  }
+  .phases li{
+    display:grid;
+    grid-template-columns:96px 1fr;
+    gap:24px;
+    align-items:baseline;
+  }
+  .phases time{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--ink-faint);
+    letter-spacing:.03em;
+    font-variant-numeric:tabular-nums;
+    padding-top:8px;
+    white-space:nowrap;
+  }
+  .phases h3{
+    font-family:var(--serif);
+    font-size:21px;
+    font-weight:600;
+    margin:0 0 7px;
+    color:var(--ink);
+    letter-spacing:.01em;
+  }
+  .phases p{
+    margin:0;
+    font-size:15.5px;
+    line-height:1.95;
+    color:var(--ink-mute);
+  }
+  .phases code{
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--ink);
+    background:var(--surf-2);
+    padding:1px 6px;
+    border-radius:2px;
+  }
+
+  /* ── Source ────────────────────────────────────────────── */
+  blockquote{
+    margin:0 0 22px;
+    padding:24px 30px;
+    background:var(--surf-1);
+    border-left:2px solid var(--decay);
+    font-size:17.5px;
+    line-height:2.1;
+    color:var(--ink);
+  }
+  cite{
+    display:block;
+    margin-top:18px;
+    font-family:var(--gothic);
+    font-size:11.5px;
+    color:var(--ink-faint);
+    font-style:normal;
+    letter-spacing:.06em;
+  }
+  .source-note{
+    font-size:14.5px;
+    color:var(--ink-mute);
+    line-height:1.9;
+  }
+
+  /* ── Implementation ────────────────────────────────────── */
+  .impl-intro{
+    font-size:15.5px;
+    color:var(--ink);
+    line-height:1.95;
+  }
+  ul.impl-list{
+    list-style:none;
+    padding:0;
+    margin:14px 0 0;
+  }
+  ul.impl-list li{
+    padding-left:26px;
+    position:relative;
+    margin-bottom:14px;
+    font-size:15px;
+    line-height:1.9;
+    color:var(--ink);
+  }
+  ul.impl-list li::before{
+    content:"—";
+    position:absolute;
+    left:0;
+    top:0;
+    color:var(--decay);
+    font-weight:600;
+  }
+  ul.impl-list code{
+    font-family:var(--mono);
+    font-size:12.5px;
+    background:var(--surf-2);
+    padding:1px 6px;
+    border-radius:2px;
+    color:var(--ink);
+  }
+
+  /* ── Footer / disclaimer ───────────────────────────────── */
+  .disclaimer{
+    margin-top:32px;
+    padding:18px 22px;
+    background:var(--surf-1);
+    border:1px solid var(--hairline);
+    font-family:var(--gothic);
+    font-size:12.5px;
+    line-height:1.85;
+    color:var(--ink-mute);
+  }
+  .disclaimer strong{color:var(--ink);font-weight:700;letter-spacing:.03em}
+  footer{
+    margin-top:64px;
+    padding-top:22px;
+    border-top:1px solid var(--hairline);
+    font-family:var(--gothic);
+    font-size:11.5px;
+    color:var(--ink-faint);
+    letter-spacing:.06em;
+    display:flex;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .stage canvas{filter:none}
+  }
+  @media (max-width:520px){
+    .wrap{padding:40px 20px 80px}
+    h1{font-size:32px}
+    .phases li{grid-template-columns:1fr;gap:6px}
+    .phases time{padding-top:0}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <p class="eyebrow">概念モック · CONCEPT MOCK</p>
+  <h1>文字が育つ反応拡散</h1>
+  <p class="sub">smapho_demo / 案 #3 — 既存の reaction-diffusion デモを文学テクストで種付けする</p>
+
+  <section class="demo">
+    <div class="stage">
+      <canvas id="rd"></canvas>
+    </div>
+    <div class="meta">
+      <span class="label">ライブシミュレーション · Gray-Scott</span>
+      <span class="timer" id="timer">t = 00:00</span>
+    </div>
+    <div class="controls">
+      <button class="btn" id="reset">再シード</button>
+      <button class="btn" id="pause">一時停止</button>
+      <select class="sel" id="preset">
+        <option value="mitosis" selected>増殖 mitosis</option>
+        <option value="coral">珊瑚 coral</option>
+        <option value="spots">斑点 spots</option>
+        <option value="chaos">混沌 chaos</option>
+      </select>
+    </div>
+  </section>
+
+  <p class="lede">
+    「羅生門」の冒頭文を、Gray-Scott 反応拡散モデルの <em>V チャンネルの初期値</em> として注入する。
+    文字は読める姿で立ち上がり、ラプラシアン項によって隣接セルへ濃度を漏らし、
+    やがて自己組織化した模様に置き換わる。
+    <strong>言葉だったものが、読み終わるよりも早く模様になる。</strong>
+  </p>
+
+  <section>
+    <h2>進行</h2>
+    <ol class="phases">
+      <li>
+        <time>t ≈ 0 s</time>
+        <div>
+          <h3>文字、まだ読める</h3>
+          <p>シミュレーション開始直後。V の高濃度領域が、そのまま文字のグリフを描いている。背景はほぼ純粋な U（基質）。</p>
+        </div>
+      </li>
+      <li>
+        <time>t ≈ 10–30 s</time>
+        <div>
+          <h3>縁から侵食</h3>
+          <p>ラプラシアン項により V が隣接セルへ拡散し始める。文字の輪郭から微細な凹凸が育ち、画数の細い部分から先に変質する。</p>
+        </div>
+      </li>
+      <li>
+        <time>t ≈ 30–90 s</time>
+        <div>
+          <h3>分裂と増殖</h3>
+          <p>mitosis 型パラメータ <code>f=0.0367, k=0.0649</code> が効き始め、文字の形は失われ、胞子状の模様が空白側へ広がる。「闇」「下」のような画数の多い字ほど崩壊の中心になりやすい。</p>
+        </div>
+      </li>
+      <li>
+        <time>t ≈ 2 min ~</time>
+        <div>
+          <h3>言葉だった残響</h3>
+          <p>もはや読めない。だが本文の配置 — 縦書きの列という骨格 — は、模様の流れの<em>傾向</em>として残る。完全に均質な模様にはならない。</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>素材</h2>
+    <blockquote>
+      或日の暮方の事である。一人の下人が、羅生門の下で雨やみを待つてゐた。
+      <cite>芥川龍之介「羅生門」 (1915) · 青空文庫 No.879 · 旧字旧仮名</cite>
+    </blockquote>
+    <p class="source-note">
+      青空文庫は CORS を許可していないため fetch は不可。本文 txt 版（パブリックドメイン）を repo に同梱する形にする。
+      ルビ記法 <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">漢字《かんじ》</code> と注記 <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">［＃...］</code> は10行程度のパーサーで剥がせる。短編1本で数十KB。
+    </p>
+  </section>
+
+  <section>
+    <h2>実装</h2>
+    <p class="impl-intro">
+      既存の <code>demos/reaction-diffusion.html</code> をベースに、以下を足すだけで成立する。Ping-Pong レンダリングと自動種まきの足回りは既に書いてある。
+    </p>
+    <ul class="impl-list">
+      <li><strong>text-to-texture パス</strong>: Canvas2D で本文を縦書きレンダ → <code>R32F</code> テクスチャ化 → V チャンネルの初期値として転送。</li>
+      <li><strong>seed inject パス</strong>: ⚙ パネルの「再シード」ボタンで、現在の V に新しい文章を加算注入。読み手の意思で「次の段落」「次の作品」を蒔ける。</li>
+      <li><strong>挙動プリセット</strong>: mitosis / coral / spots / solitons の <code>f,k</code> ペア切替。文字の崩れ方が劇的に変わる（上のキャンバスでも試せます）。</li>
+      <li><strong>paramPanel 追加項目</strong>: <code>text:作品ID</code>, <code>range:フォントサイズ</code>, <code>button:再シード</code>, <code>button:次の節へ</code>。値は URL ハッシュへ自動保存される（既存仕様）。</li>
+      <li><strong>カラーマップ</strong>: 既存 reaction-diffusion デモは emerald → purple。本案は素材に合わせて<em>苔の闇</em>から<em>螢光の青磁</em>へ。朽葉色 <code>#b5573a</code> を縁取りアクセントに。</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="disclaimer">
+      <strong>このページの canvas について</strong> ／
+      実際に Gray-Scott を走らせている（200×360 グリッド × 3 ステップ/フレーム、Canvas2D + Float32Array）。
+      本番のデモは WebGL2 の半精度 RT で同等以上の解像度を出します。
+      日本語縦書きのグリフは <code style="font-family:var(--mono);font-size:12px">fillText</code> でカラム配置・右起こし。
+    </div>
+  </section>
+
+  <footer>
+    <span>concept #3 · smapho_demo</span>
+    <span>reaction-diffusion × literary text</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  // ── Gray-Scott reaction diffusion, seeded by Japanese vertical text ──
+  const SIM_W = 200, SIM_H = 360;
+  const canvas = document.getElementById('rd');
+  canvas.width = SIM_W;
+  canvas.height = SIM_H;
+  const ctx = canvas.getContext('2d');
+
+  const u = new Float32Array(SIM_W * SIM_H);
+  const v = new Float32Array(SIM_W * SIM_H);
+  const u2 = new Float32Array(SIM_W * SIM_H);
+  const v2 = new Float32Array(SIM_W * SIM_H);
+
+  const presets = {
+    mitosis: { f:0.0367, k:0.0649 },
+    coral:   { f:0.0620, k:0.0620 },
+    spots:   { f:0.0300, k:0.0620 },
+    chaos:   { f:0.0260, k:0.0510 },
+  };
+  let cur = presets.mitosis;
+  let paused = false;
+  let startTime = performance.now();
+
+  function seedText(){
+    u.fill(1.0);
+    v.fill(0.0);
+
+    const off = document.createElement('canvas');
+    off.width = SIM_W;
+    off.height = SIM_H;
+    const o = off.getContext('2d');
+    o.fillStyle = '#000';
+    o.fillRect(0, 0, SIM_W, SIM_H);
+    o.fillStyle = '#fff';
+    o.textBaseline = 'top';
+
+    const text = '或日の暮方の事である一人の下人が羅生門の下で雨やみを待つてゐた';
+    const fs = 16;
+    o.font = `600 ${fs}px "Hiragino Mincho ProN","YuMincho","Yu Mincho",serif`;
+
+    const colSpacing = 22;
+    const lineH = 18;
+    const startX = SIM_W - 24;
+    const startY = 22;
+
+    let col = 0;
+    let yPos = startY;
+    for (const ch of text){
+      if (yPos > SIM_H - 24){ col++; yPos = startY; }
+      const x = startX - col * colSpacing;
+      if (x < 18) break;
+      o.fillText(ch, x, yPos);
+      yPos += lineH;
+    }
+
+    const img = o.getImageData(0, 0, SIM_W, SIM_H);
+    for (let i = 0; i < SIM_W * SIM_H; i++){
+      const lum = img.data[i*4];
+      if (lum > 80){
+        const w = lum / 255;
+        v[i] = 0.55 + w * 0.4;
+        u[i] = 0.05 + (1 - w) * 0.4;
+      }
+    }
+    startTime = performance.now();
+  }
+
+  function step(){
+    const DU = 1.0, DV = 0.5;
+    const f = cur.f, k = cur.k;
+    for (let y = 1; y < SIM_H - 1; y++){
+      const row = y * SIM_W;
+      for (let x = 1; x < SIM_W - 1; x++){
+        const i = row + x;
+        const uc = u[i], vc = v[i];
+        const lU = u[i-SIM_W] + u[i+SIM_W] + u[i-1] + u[i+1] - 4*uc;
+        const lV = v[i-SIM_W] + v[i+SIM_W] + v[i-1] + v[i+1] - 4*vc;
+        const uvv = uc * vc * vc;
+        u2[i] = uc + DU * lU - uvv + f * (1 - uc);
+        v2[i] = vc + DV * lV + uvv - (f + k) * vc;
+      }
+    }
+    u.set(u2); v.set(v2);
+  }
+
+  const imgData = ctx.createImageData(SIM_W, SIM_H);
+  const dataArr = imgData.data;
+  function render(){
+    // Bioluminescent green-cyan on warm black
+    for (let i = 0; i < SIM_W * SIM_H; i++){
+      const t = Math.max(0, Math.min(1, v[i] * 2.0));
+      const t2 = t * t;
+      dataArr[i*4]     = 8  + t * 110 + t2 * 18;
+      dataArr[i*4 + 1] = 12 + t * 198 + t2 * 30;
+      dataArr[i*4 + 2] = 16 + t * 168 + t2 * 50;
+      dataArr[i*4 + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  const timerEl = document.getElementById('timer');
+  function updateTimer(){
+    const e = (performance.now() - startTime) / 1000;
+    const mm = String(Math.floor(e / 60)).padStart(2, '0');
+    const ss = String(Math.floor(e % 60)).padStart(2, '0');
+    timerEl.textContent = `t = ${mm}:${ss}`;
+  }
+
+  let raf;
+  function loop(){
+    if (!paused){
+      step(); step(); step();
+    }
+    render();
+    updateTimer();
+    raf = requestAnimationFrame(loop);
+  }
+
+  document.getElementById('reset').addEventListener('click', () => {
+    seedText();
+  });
+  document.getElementById('pause').addEventListener('click', (e) => {
+    paused = !paused;
+    e.currentTarget.textContent = paused ? '再開' : '一時停止';
+  });
+  document.getElementById('preset').addEventListener('change', (e) => {
+    cur = presets[e.target.value];
+  });
+
+  if (document.fonts && document.fonts.ready){
+    document.fonts.ready.then(() => { seedText(); loop(); });
+  } else {
+    seedText();
+    loop();
+  }
+})();
+</script>
+<p style="text-align:center;margin:40px 0 0;font-family:-apple-system,sans-serif;font-size:12px"><a href="../index.html" style="color:#8a8276;text-decoration:none;border:1px solid #2a2620;padding:8px 14px;border-radius:1px">← shader_demo 一覧へ</a></p>
+</body>
+</html>
