@@ -507,6 +507,9 @@
   const REFORM_S = 3;            // 次の行へ再集結
   const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 21s
   const FULL_STEPS_PER_SEC = 180;
+  const BG_LOCK_MUL = 0.2;       // hold/ramp の lock：背景セルにはこの倍率だけ掛ける
+                                 // （文字セルは 1.0）→ 隣レーンの拡散パターンが
+                                 //   背景に滲み込めるようにしてレーン境界を緩める。
 
   // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
   // 共有 u/v 上で動かし、トラックごとに x-range が違う。
@@ -644,16 +647,20 @@
     }
   }
 
-  // トラックの x-range セルを target に向けて lock（強度 0..1）で引き寄せる。
-  // lock=1 で完全 snap、lock=0 で何もしない（sim 自由）。
+  // トラックの x-range セルを target に向けて lock で引き寄せる。
+  // 文字セル（targetV > 0.4）はフル lock、背景セルは BG_LOCK_MUL だけ。
+  // これで「文字はシャープに、背景は隣レーンからの拡散を受け入れる」状態を作る。
   function applyTrackLock(t, lock){
     if (lock <= 0) return;
+    const lockBg = lock * BG_LOCK_MUL;
     for (let y = 0; y < SIM_H; y++){
       const row = y * SIM_W;
       for (let x = t.x0; x < t.x1; x++){
         const i = row + x;
-        u[i] = u[i] + (targetU[i] - u[i]) * lock;
-        v[i] = v[i] + (targetV[i] - v[i]) * lock;
+        const lm = targetV[i] > 0.4 ? lock : lockBg;
+        if (lm <= 0) continue;
+        u[i] = u[i] + (targetU[i] - u[i]) * lm;
+        v[i] = v[i] + (targetV[i] - v[i]) * lm;
       }
     }
   }
