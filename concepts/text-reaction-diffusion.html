@@ -331,16 +331,16 @@
       <button class="btn" id="next">次の行へ</button>
       <button class="btn" id="pause">一時停止</button>
       <select class="sel" id="preset">
-        <option value="mitosis" selected>増殖 mitosis</option>
-        <option value="coral">珊瑚 coral</option>
+        <option value="mitosis">増殖 mitosis</option>
+        <option value="coral" selected>珊瑚 coral</option>
         <option value="spots">斑点 spots</option>
         <option value="chaos">混沌 chaos</option>
       </select>
     </div>
     <div class="speed-row">
       <span class="speed-label">速度</span>
-      <input type="range" id="speed" min="0.5" max="4" step="0.1" value="2" aria-label="読み進めの速度">
-      <span class="speed-val" id="speedval">2.0×</span>
+      <input type="range" id="speed" min="0.5" max="8" step="0.1" value="4" aria-label="読み進めの速度">
+      <span class="speed-val" id="speedval">4.0×</span>
     </div>
   </section>
 
@@ -355,8 +355,8 @@
   <section>
     <h2>進行</h2>
     <p style="font-size:14.5px;color:var(--ink-mute);line-height:1.9;margin:0 0 24px">
-      各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 17 / DISSOLVE 5 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜4× 調整）。
-      <code>DISSOLVE+REFORM = 7 = stagger</code> なので、常に 1 トラックだけが非可読、残り 3 トラックは hold か ramp で文字姿が残るオーバーラップ構成。
+      各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 10 / DISSOLVE 12 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜8× 調整）。
+      <code>HOLD+RAMP = 14 = 2×stagger</code> なので、常に 2 トラックが hold か ramp（=可読）、残り 2 トラックが拡散か再集結のオーバーラップ構成。
       <code>sim</code> は常時全速力で回し、位相は
       <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0</code>）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
     </p>
@@ -369,14 +369,14 @@
         </div>
       </li>
       <li>
-        <time>17 s</time>
+        <time>10 s</time>
         <div>
           <h3>立ち上がり（lock = 1−p³）</h3>
           <p>lock が cubic ease-in で 1 → 0 に解放される。最初は固く保たれ、終盤で急に sim に明け渡される。画数の細い部分から先に変質する。</p>
         </div>
       </li>
       <li>
-        <time>5 s</time>
+        <time>12 s</time>
         <div>
           <h3>拡散（lock = 0）</h3>
           <p>このトラックは sim 任せ。プリセットの <code>f, k</code> に従って固有の崩れ方をする。mitosis なら胞子状、coral なら細胞状、spots なら孤立点、chaos なら不規則な滲み。</p>
@@ -418,7 +418,9 @@
     <ul class="impl-list">
       <li><strong>text-to-texture パス</strong>: 当初 <code>SVG&lt;foreignObject&gt;</code> + <code>writing-mode: vertical-rl</code> でブラウザ組版に丸投げを試みたが、foreignObject 入り画像は canvas を cross-origin tainted 化し <code>getImageData</code> が SecurityError になる仕様だったため断念。代わりに Canvas2D <code>fillText</code> で 1 字ずつ縦に流しつつ、<em>縦書きで崩れる文字種だけを補正</em>: <code>「」『』</code> は U+FE41〜FE44 の縦書き専用形に差替え、<code>、。，．</code> は字面の右上へ平行移動 (<code>+0.45fs, -0.5fs</code>)、<code>― — ー 〜 〜 ‐</code> は 90° 時計回り回転。羅生門本文に出現するこれら 4 種で網羅される。</li>
       <li><strong>per-cell snap による再集結</strong>: dissolve→reform 移行時に各セルへ <code>snapMoment[i] ∈ [0, REFORM_S]</code> を乱数配布。<code>targetV[i] &gt; 0.4</code> の文字セルは前半、背景セルは後半に snap させ、<em>粒が個別タイミングで固まり、文字が先に立ち上がる</em>挙動を作る。一斉 lerp の crossfade 感を消す要。</li>
-      <li><strong>速度スライダー</strong>: フレーム毎の <code>dt</code> に倍率を掛けて sim 時間に変換。サイクル長もシミュレーションも同じ係数でスケールするので、テンポを変えても各位相の比は保たれる。</li>
+      <li><strong>速度スライダー</strong>: フレーム毎の <code>dt</code> に倍率（0.5×〜8×、既定 4×）を掛けて sim 時間に変換。サイクル長もシミュレーションも同じ係数でスケールするので、テンポを変えても各位相の比は保たれる。</li>
+      <li><strong>禁則処理</strong>: 行分割後に <code>、。」』）</code> ぁぃぅ ャュョ などが行頭に来た場合は前行末に押し戻し、<code>「『（</code> などが行末に来た場合は次行頭へ移動。「閉じカギ括弧だけ行頭」「、だけの行」等の不自然な分割を解消。</li>
+      <li><strong>crisp ハイライト</strong>: hold/ramp の lock 強度（cubic ease-in で 1→0）を文字セル（<code>targetV &gt; 0.4</code>）の RGB に乗算（最大 1.6×）。読んでいる行の文字が周囲よりはっきり光って見える。</li>
       <li><strong>挙動プリセット</strong>: mitosis / coral / spots / solitons の <code>f,k</code> ペア切替。文字の崩れ方が劇的に変わる（上のキャンバスでも試せます）。</li>
       <li><strong>paramPanel 追加項目</strong>: <code>text:作品ID</code>, <code>range:フォントサイズ</code>, <code>button:再シード</code>, <code>button:次の節へ</code>。値は URL ハッシュへ自動保存される（既存仕様）。</li>
       <li><strong>カラーマップ</strong>: 既存 reaction-diffusion デモは emerald → purple。本案は素材に合わせて<em>苔の闇</em>から<em>螢光の青磁</em>へ。朽葉色 <code>#b5573a</code> を縁取りアクセントに。</li>
@@ -460,17 +462,18 @@
     spots:   { f:0.0300, k:0.0620 },
     chaos:   { f:0.0260, k:0.0510 },
   };
-  let cur = presets.mitosis;
+  let cur = presets.coral;
   let paused = false;
-  let speedMul = 2.0; // 既定 2×、UI スライダーで 0.5×〜4× で可変
+  let speedMul = 4.0; // 既定 4×、UI スライダーで 0.5×〜8× で可変
 
   // ── 本文：羅生門 全文（青空文庫 旧字旧仮名版を起動時に fetch） ────
   let TEXT_LINES = []; // loadAndSplit() で populate
-  // 段落を「句点で文単位 → 長文は読点でさらに分割」して縦書きキャンバスに収まる
-  // 読み取り単位にする（目標 ≈ 18 字以下、収まらないものは縦書き wrap に任せる）
+  // 段落を「句点で文単位 → 長文は読点で分割 → なお長ければ文字数で強制分割」
+  // 1 列 ≈ 18 字、レーン 50px は 2 列まで → 1 行最大 32 字。TARGET=16 で
+  // 1 列に収まる行を優先しつつ、収まらなければ 2 列に。
   function splitParagraph(para){
     const sents = para.match(/[^。！？]*[。！？]/g) || [para];
-    const TARGET = 18;
+    const TARGET = 16, MAX = 32;
     const out = [];
     for (const sen of sents){
       if (sen.length <= TARGET){ out.push(sen); continue; }
@@ -482,7 +485,36 @@
       }
       if (cur) out.push(cur);
     }
-    return out;
+    // 上記でも MAX を超える行（、を含まない長文）を文字数で強制分割
+    const splat = [];
+    for (const l of out){
+      if (l.length <= MAX){ splat.push(l); continue; }
+      for (let i = 0; i < l.length; i += MAX) splat.push(l.substring(i, i + MAX));
+    }
+    return splat;
+  }
+  // 禁則処理：閉じ記号・小書き仮名・長音などが行頭に来ないよう前行に押し戻す。
+  // また開き括弧が行末に来ないよう次行頭に移す。これで「、だけの行」
+  // 「閉じカギ括弧だけ行頭」のような不自然な分割が解消される。
+  const HEAD_FORBID = /^[、。，．？！）」』〕〙〗｝〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮーゝゞヽヾ]/;
+  const TAIL_FORBID = /[（［｛〔〘〖「『]$/;
+  function applyKinsoku(lines){
+    const out = [];
+    for (let line of lines){
+      while (out.length > 0 && line.length > 0 && HEAD_FORBID.test(line)){
+        out[out.length - 1] += line.charAt(0);
+        line = line.substring(1);
+      }
+      if (line.length > 0) out.push(line);
+    }
+    for (let i = 0; i < out.length - 1; i++){
+      while (out[i].length > 0 && TAIL_FORBID.test(out[i])){
+        const ch = out[i].slice(-1);
+        out[i] = out[i].slice(0, -1);
+        out[i + 1] = ch + out[i + 1];
+      }
+    }
+    return out.filter(l => l.length > 0);
   }
   async function loadAndSplit(){
     const resp = await fetch('texts/rashomon.txt');
@@ -497,15 +529,15 @@
         if (t) lines.push(t);
       }
     }
-    TEXT_LINES = lines;
+    TEXT_LINES = applyKinsoku(lines);
   }
 
   // ── サイクル時間（HOLD + RAMP + DISSOLVE + REFORM = 28s, stagger = 7s）
-  // DISSOLVE + REFORM = 7 = stagger なので、常に 1 トラックだけが非可読状態、
-  // 残り 3 トラックは hold か ramp（=文字姿が見える）でオーバーラップする。
-  const HOLD_S = 4;              // 静止：crisp に読める時間（倍に拡張）
-  const RAMP_S = 17;             // 立ち上がり（cubic ease-in でゆっくり溶ける）
-  const DISSOLVE_S = 5;          // 全速力で拡散（パターンが立ち上がる時間）
+  // HOLD + RAMP = 14 = 2×stagger なので、常に 2 トラックが hold か ramp
+  // （=可読）、残り 2 トラックが dissolve か reform（=非可読）の構成。
+  const HOLD_S = 4;              // 静止：crisp に読める時間
+  const RAMP_S = 10;             // 立ち上がり（cubic ease-in でゆっくり溶ける）
+  const DISSOLVE_S = 12;         // 拡散：パターン形成の時間
   const REFORM_S = 2;            // 次の行へ再集結
   const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 28s
   const FULL_STEPS_PER_SEC = 180;
@@ -525,7 +557,18 @@
     { x0: 50,  x1: 100, phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左中
     { x0: 0,   x1: 50,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 21 }, // 左
   ];
-  let nextGlobalLine = TRACKS.length; // 行 0,1,2 は初期表示済み → 次は 3
+  let nextGlobalLine = TRACKS.length; // 行 0,1,2,3 は初期表示済み → 次は 4
+  // x 座標 → トラック番号の lookup（render の highlight 用）
+  const TRACK_BY_X = (() => {
+    const arr = new Int8Array(SIM_W);
+    for (let x = 0; x < SIM_W; x++){
+      arr[x] = -1;
+      for (let k = 0; k < TRACKS.length; k++){
+        if (x >= TRACKS[k].x0 && x < TRACKS[k].x1){ arr[x] = k; break; }
+      }
+    }
+    return arr;
+  })();
 
   // ── 状態 ─────────────────────────────────────────────
   let simElapsed = 0;
@@ -781,14 +824,38 @@
   const imgData = ctx.createImageData(SIM_W, SIM_H);
   const dataArr = imgData.data;
   function render(){
-    // Bioluminescent green-cyan on warm black
-    for (let i = 0; i < SIM_W * SIM_H; i++){
-      const t = Math.max(0, Math.min(1, v[i] * 2.0));
-      const t2 = t * t;
-      dataArr[i*4]     = 8  + t * 110 + t2 * 18;
-      dataArr[i*4 + 1] = 12 + t * 198 + t2 * 30;
-      dataArr[i*4 + 2] = 16 + t * 168 + t2 * 50;
-      dataArr[i*4 + 3] = 255;
+    // 各トラックの highlight 強度（hold/ramp で文字セルをブースト）
+    const HL = [];
+    for (let k = 0; k < TRACKS.length; k++){
+      const t = TRACKS[k];
+      if (t.phase === 'hold') HL[k] = 1.0;
+      else if (t.phase === 'ramp'){
+        const p = Math.min(1, t.phaseElapsed / RAMP_S);
+        HL[k] = 1 - p * p * p;
+      } else HL[k] = 0;
+    }
+    // Bioluminescent green-cyan on warm black、letter セル × hold/ramp で明度ブースト
+    let i = 0;
+    for (let y = 0; y < SIM_H; y++){
+      for (let x = 0; x < SIM_W; x++, i++){
+        const t = Math.max(0, Math.min(1, v[i] * 2.0));
+        const t2 = t * t;
+        let r = 8  + t * 110 + t2 * 18;
+        let g = 12 + t * 198 + t2 * 30;
+        let b = 16 + t * 168 + t2 * 50;
+        const tk = TRACK_BY_X[x];
+        if (tk >= 0 && HL[tk] > 0 && targetV[i] > 0.4){
+          const f = 1 + HL[tk] * 0.6; // 最大 1.6× ブースト
+          r *= f; g *= f; b *= f;
+          if (r > 255) r = 255;
+          if (g > 255) g = 255;
+          if (b > 255) b = 255;
+        }
+        dataArr[i*4]     = r;
+        dataArr[i*4 + 1] = g;
+        dataArr[i*4 + 2] = b;
+        dataArr[i*4 + 3] = 255;
+      }
     }
     ctx.putImageData(imgData, 0, 0);
   }
@@ -816,8 +883,9 @@
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     if (!paused){
-      // 速度倍率を dt に掛けて sim 時間を進める。暴走防止のため上限 0.1s。
-      const dts = Math.min(0.1, dt * speedMul);
+      // 速度倍率を dt に掛けて sim 時間を進める。暴走防止のため上限 0.15s
+      // （60fps × 8× = 0.133 まで素直に通すため）。
+      const dts = Math.min(0.15, dt * speedMul);
       simElapsed += dts;
       stepAccum += FULL_STEPS_PER_SEC * dts;
       let safety = 32;
