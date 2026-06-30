@@ -355,35 +355,35 @@
   <section>
     <h2>進行</h2>
     <p style="font-size:14.5px;color:var(--ink-mute);line-height:1.9;margin:0 0 24px">
-      各トラックは独立な 21 秒サイクル（速度スライダーで wall-clock 上の長さを 0.5×〜4× 調整）。
+      各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 17 / DISSOLVE 5 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜4× 調整）。
+      <code>DISSOLVE+REFORM = 7 = stagger</code> なので、常に 1 トラックだけが非可読、残り 3 トラックは hold か ramp で文字姿が残るオーバーラップ構成。
       <code>sim</code> は常時全速力で回し、位相は
-      <em>hold</em>=lock 1.0（ただし背景セルは <code>×BG_LOCK_MUL=0</code>）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em>
-      で表現する。初期の hold 延長で 1/4 サイクルずつズラし、4 本並列の定常状態へ。
+      <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0</code>）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
     </p>
     <ol class="phases">
       <li>
-        <time>2 s</time>
+        <time>4 s</time>
         <div>
           <h3>静止 — 行を読む（lock = 1）</h3>
           <p>毎フレーム target の値で完全に上書き。sim はトラックの外側で進むが、このトラックは text のまま留まる。</p>
         </div>
       </li>
       <li>
-        <time>2 s</time>
+        <time>17 s</time>
         <div>
           <h3>立ち上がり（lock = 1−p³）</h3>
           <p>lock が cubic ease-in で 1 → 0 に解放される。最初は固く保たれ、終盤で急に sim に明け渡される。画数の細い部分から先に変質する。</p>
         </div>
       </li>
       <li>
-        <time>14 s</time>
+        <time>5 s</time>
         <div>
           <h3>拡散（lock = 0）</h3>
           <p>このトラックは sim 任せ。プリセットの <code>f, k</code> に従って固有の崩れ方をする。mitosis なら胞子状、coral なら細胞状、spots なら孤立点、chaos なら不規則な滲み。</p>
         </div>
       </li>
       <li>
-        <time>3 s</time>
+        <time>2 s</time>
         <div>
           <h3>再集結 — per-cell snap で「粒が集まる」</h3>
           <p>そのトラックの x-range に <em>次の行のグリフ</em>を target として焼き込み、各セルに <code>0..REFORM_S</code> の snap 閾値を乱数配布する。文字セル（targetV 明）は前半 55% に、背景セルは後半 60% にバラまく。<code>phaseElapsed</code> が閾値を超えたセルは target に snap し、未 snap セルは sim 任せで churning。結果、<em>セルが個別タイミングでカチカチ立ち上がり、文字が先に組み上がってから背景が落ち着く</em>。一斉クロスフェードを避けるための要。</p>
@@ -500,12 +500,14 @@
     TEXT_LINES = lines;
   }
 
-  // ── サイクル時間（1行あたり HOLD + RAMP + DISSOLVE + REFORM = 21s）
-  const HOLD_S = 2;              // 静止：文字を読める時間
-  const RAMP_S = 2;              // 立ち上がり（cubic ease-in）
-  const DISSOLVE_S = 14;         // 全速力で拡散
-  const REFORM_S = 3;            // 次の行へ再集結
-  const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 21s
+  // ── サイクル時間（HOLD + RAMP + DISSOLVE + REFORM = 28s, stagger = 7s）
+  // DISSOLVE + REFORM = 7 = stagger なので、常に 1 トラックだけが非可読状態、
+  // 残り 3 トラックは hold か ramp（=文字姿が見える）でオーバーラップする。
+  const HOLD_S = 4;              // 静止：crisp に読める時間（倍に拡張）
+  const RAMP_S = 17;             // 立ち上がり（cubic ease-in でゆっくり溶ける）
+  const DISSOLVE_S = 5;          // 全速力で拡散（パターンが立ち上がる時間）
+  const REFORM_S = 2;            // 次の行へ再集結
+  const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 28s
   const FULL_STEPS_PER_SEC = 180;
   const BG_LOCK_MUL = 0;         // hold/ramp の lock：背景セルにはこの倍率を掛ける（0 = 全く lock しない）
                                  // 文字セルは 1.0 のまま anchor。0 にすると背景が完全に
@@ -518,10 +520,10 @@
   const TRACK_W = 50;            // 全トラック共通幅（50×4 = 200）
   // 4 トラック並列。右→右中→左中→左 の読み順。
   const TRACKS = [
-    { x0: 150, x1: 200, phase: 'hold', phaseElapsed: 0, lineIdx: 0, holdExt: 0     }, // 右
-    { x0: 100, x1: 150, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 5.25  }, // 右中
-    { x0: 50,  x1: 100, phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 10.5  }, // 左中
-    { x0: 0,   x1: 50,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 15.75 }, // 左
+    { x0: 150, x1: 200, phase: 'hold', phaseElapsed: 0, lineIdx: 0, holdExt: 0  }, // 右
+    { x0: 100, x1: 150, phase: 'hold', phaseElapsed: 0, lineIdx: 1, holdExt: 7  }, // 右中
+    { x0: 50,  x1: 100, phase: 'hold', phaseElapsed: 0, lineIdx: 2, holdExt: 14 }, // 左中
+    { x0: 0,   x1: 50,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 21 }, // 左
   ];
   let nextGlobalLine = TRACKS.length; // 行 0,1,2 は初期表示済み → 次は 3
 
