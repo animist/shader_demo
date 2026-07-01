@@ -988,9 +988,13 @@
       for (const t of TRACKS){
         advanceTrack(t, dts);
         if (t.phase === 'reform'){
-          // reform 進行度に比例して引力を強くする（0 → 0.08）
+          // attraction を cubic ease-out で立ち上げる（0 → 0.08 だが前半で
+          // 一気に強くなり後半は plateau）。V の gathering が reform 前半で
+          // ほぼ完了する形になり、reform 末に V 収束と HL 上昇が重なって
+          // 生じる flash 感を軽減する。
           const p = Math.min(1, t.phaseElapsed / REFORM_S);
-          letterAttraction(t, p * 0.08);
+          const easeOut = 1 - (1 - p) * (1 - p) * (1 - p);
+          letterAttraction(t, easeOut * 0.08);
           applyReformSnap(t);
         } else {
           applyTrackLock(t, lockStrength(t));
