@@ -900,20 +900,29 @@
   const imgData = ctx.createImageData(SIM_W, SIM_H);
   const dataArr = imgData.data;
   function render(){
-    // 位相ベース HL（V 依存ではない）：dissolve では強制 0 なので前行の
-    // V 残滓は暗いままに落ちる。reform HL は smoothstep（両端で微分係数
-    // 0）なので dissolve→reform、reform→hold の両サイドで滑らかに繋がる。
+    // 位相ベース HL：dissolve では強制 0 で前行の V 残滓は暗いままに落ちる。
+    // HL の 0 → 1 立ち上がりは reform + hold 序盤の BRIGHT_TAIL 秒 に
+    // 分散させる（BRIGHT_WINDOW = REFORM_S + BRIGHT_TAIL の smoothstep）。
+    // これで reform 内で 100% 変化を凝縮せず、hold に入っても緩やかに
+    // 明るくなり続けるので、「reform 末で急に光る」flash 印象が消える。
+    const BRIGHT_TAIL = 2;
+    const BRIGHT_WINDOW = REFORM_S + BRIGHT_TAIL;
     const HL = [];
     for (let k = 0; k < TRACKS.length; k++){
       const t = TRACKS[k];
-      if (t.phase === 'hold') HL[k] = 1.0;
-      else if (t.phase === 'ramp'){
+      if (t.phase === 'hold'){
+        if (t.phaseElapsed >= BRIGHT_TAIL) HL[k] = 1.0;
+        else {
+          const tp = (REFORM_S + t.phaseElapsed) / BRIGHT_WINDOW;
+          HL[k] = tp * tp * (3 - 2 * tp);
+        }
+      } else if (t.phase === 'ramp'){
         const p = Math.min(1, t.phaseElapsed / RAMP_S);
-        HL[k] = 1 - p * p * p; // 1 → 0（cubic ease-in で hold から自然に暗く）
+        HL[k] = 1 - p * p * p;
       } else if (t.phase === 'reform'){
-        const p = Math.min(1, t.phaseElapsed / REFORM_S);
-        HL[k] = p * p * (3 - 2 * p); // smoothstep：両端で微分 0
-      } else HL[k] = 0; // dissolve
+        const tp = t.phaseElapsed / BRIGHT_WINDOW;
+        HL[k] = tp * tp * (3 - 2 * tp);
+      } else HL[k] = 0;
     }
     let i = 0;
     for (let y = 0; y < SIM_H; y++){
