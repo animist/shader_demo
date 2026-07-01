@@ -358,7 +358,7 @@
       各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 10 / DISSOLVE 12 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜16× 調整）。
       <code>HOLD+RAMP = 14 = 2×stagger</code> なので、常に 2 トラックが hold か ramp（=可読）、残り 2 トラックが拡散か再集結のオーバーラップ構成。
       <code>sim</code> は常時全速力で回し、位相は
-      <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0</code>：damping なしで halo がプラトーせず広がり続ける）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
+      <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0</code>）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
     </p>
     <ol class="phases">
       <li>
@@ -430,7 +430,7 @@
   <section>
     <div class="disclaimer">
       <strong>このページの canvas について</strong> ／
-      実際に Gray-Scott を走らせている（160×360 グリッド、Karl Sims 9点ラプラシアン、Canvas2D + Float32Array、150 sps × 速度倍率（位相は full、sim は 8× で頭打ち）、DV=0.6）。
+      実際に Gray-Scott を走らせている（160×360 グリッド、Karl Sims 9点ラプラシアン、Canvas2D + Float32Array、180 sps × 速度倍率（位相は full、sim は 8× で頭打ち））。
       本番のデモは WebGL2 の半精度 RT で同等以上の解像度を出します。
       日本語縦書きは Canvas2D <code style="font-family:var(--mono);font-size:12px">fillText</code> で 1 字ずつ流し、縦書きで崩れる文字（句読点・カギ括弧・長音/ダッシュ）だけを補正テーブルで明示的に処理。foreignObject 方式は canvas を tainted 化して <code style="font-family:var(--mono);font-size:12px">getImageData</code> が拒否されるため不可。
     </div>
@@ -586,13 +586,11 @@
   const DISSOLVE_S = 12;         // 拡散：パターン形成の時間
   const REFORM_S = 2;            // 次の行へ再集結
   const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 28s
-  const FULL_STEPS_PER_SEC = 150; // sim の粒度：小さくするほど halo/拡散が全体的に
-                                 // ゆっくりに（dissolve の pattern 形成も slightly 遅くなる）
-  const BG_LOCK_MUL = 0;         // hold/ramp の背景 damping。0 で平衡到達距離が実質無限
-                                 // → halo が『プラトーせずに広がり続ける』。sim rate と
-                                 // 組み合わせて「ゆっくりと広がり続ける」halo が
-                                 // 得られる。dissolve も lock=0 で無効なのでレーン跨ぎ
-                                 // 拡散はそのまま維持。
+  const FULL_STEPS_PER_SEC = 180;
+  const BG_LOCK_MUL = 0;         // hold/ramp の lock：背景セルにはこの倍率を掛ける（0 = 全く lock しない）
+                                 // 文字セルは 1.0 のまま anchor。0 にすると背景が完全に
+                                 // sim 任せになり、隣レーンで進んでいる拡散が背景を経由
+                                 // して canvas 全体へ自由に流れ込む（レーン境界の縦線が消える）。
 
   // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
   // 共有 u/v 上で動かし、トラックごとに x-range が違う。
@@ -606,7 +604,7 @@
     { x0: 0,   x1: 40,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 21 }, // 左
   ];
   let nextGlobalLine = TRACKS.length; // 行 0,1,2,3 は初期表示済み → 次は 4
-  // x 座標 → トラック番号の lookup（render の位相ベース HL 用）
+  // x 座標 → トラック番号の lookup（render の highlight 用）
   const TRACK_BY_X = (() => {
     const arr = new Int8Array(SIM_W);
     for (let x = 0; x < SIM_W; x++){
@@ -738,50 +736,15 @@
     }
   }
   function applyReformSnap(t){
-    // 「snap moment を過ぎたら target に強く lerp」（旧: ハード set）。
-    // rate 0.3/frame で数フレームで到達 → V の急変を平滑化し、
-    // V ベース HL とあわせて per-cell のフラッシュを消す。
-    const rate = 0.3;
     for (let y = 0; y < SIM_H; y++){
       const row = y * SIM_W;
       for (let x = t.x0; x < t.x1; x++){
         const i = row + x;
         if (t.phaseElapsed >= snapMoment[i]){
-          u[i] = u[i] + (targetU[i] - u[i]) * rate;
-          v[i] = v[i] + (targetV[i] - v[i]) * rate;
+          u[i] = targetU[i];
+          v[i] = targetV[i];
         }
       }
-    }
-  }
-
-  // 「文字の引力」演出：reform 中、文字セル（targetV>0.4）が 4-neighbor から
-  // V 値を strength × 各値の割合で吸い込む。同時に隣接セルは減衰する。
-  // 結果として周囲の拡散パターンが文字位置へ流れ込む視覚効果になる。
-  // v2 は sim 用の scratch だが、step() 後は v のコピーになっているだけなので
-  // ここで一時バッファとして再利用してよい。
-  function letterAttraction(t, strength){
-    if (strength <= 0) return;
-    v2.set(v);
-    const yMax = SIM_H - 1;
-    const xMin = Math.max(1, t.x0);
-    const xMax = Math.min(SIM_W - 1, t.x1);
-    for (let y = 1; y < yMax; y++){
-      const row = y * SIM_W;
-      for (let x = xMin; x < xMax; x++){
-        const i = row + x;
-        if (targetV[i] > 0.4){
-          const vL = v[i-1], vR = v[i+1], vU = v[i-SIM_W], vD = v[i+SIM_W];
-          v2[i]        += (vL + vR + vU + vD) * strength;
-          v2[i-1]      -= vL * strength;
-          v2[i+1]      -= vR * strength;
-          v2[i-SIM_W]  -= vU * strength;
-          v2[i+SIM_W]  -= vD * strength;
-        }
-      }
-    }
-    for (let i = 0; i < SIM_W * SIM_H; i++){
-      const val = v2[i];
-      v[i] = val < 0 ? 0 : val > 1 ? 1 : val;
     }
   }
 
@@ -879,7 +842,7 @@
   function step(){
     // Karl Sims 9点ラプラシアン: 0.2*隣4 + 0.05*斜4 - 1.0*中心 （値域 [-1,+1] で安定）
     // 既存 demos/reaction-diffusion.html (GLSL) と同じ離散化
-    const DU = 1.0, DV = 0.85;
+    const DU = 1.0, DV = 0.5;
     const f = cur.f, k = cur.k;
     const W = SIM_W;
     for (let y = 1; y < SIM_H - 1; y++){
@@ -907,54 +870,28 @@
   const imgData = ctx.createImageData(SIM_W, SIM_H);
   const dataArr = imgData.data;
   function render(){
-    // 位相ベース HL：dissolve では強制 0 で前行の V 残滓は暗いままに落ちる。
-    // HL の 0 → 1 立ち上がりは reform + hold 序盤の BRIGHT_TAIL 秒 に
-    // 分散させる（BRIGHT_WINDOW = REFORM_S + BRIGHT_TAIL の smoothstep）。
-    // これで reform 内で 100% 変化を凝縮せず、hold に入っても緩やかに
-    // 明るくなり続けるので、「reform 末で急に光る」flash 印象が消える。
-    const BRIGHT_TAIL = 2;
-    const BRIGHT_WINDOW = REFORM_S + BRIGHT_TAIL;
+    // 各トラックの highlight 強度（hold/ramp で文字セルをブースト）
     const HL = [];
     for (let k = 0; k < TRACKS.length; k++){
       const t = TRACKS[k];
-      if (t.phase === 'hold'){
-        if (t.phaseElapsed >= BRIGHT_TAIL) HL[k] = 1.0;
-        else {
-          const tp = (REFORM_S + t.phaseElapsed) / BRIGHT_WINDOW;
-          HL[k] = tp * tp * (3 - 2 * tp);
-        }
-      } else if (t.phase === 'ramp'){
+      if (t.phase === 'hold') HL[k] = 1.0;
+      else if (t.phase === 'ramp'){
         const p = Math.min(1, t.phaseElapsed / RAMP_S);
         HL[k] = 1 - p * p * p;
-      } else if (t.phase === 'reform'){
-        const tp = t.phaseElapsed / BRIGHT_WINDOW;
-        HL[k] = tp * tp * (3 - 2 * tp);
       } else HL[k] = 0;
     }
+    // Bioluminescent green-cyan on warm black、letter セル × hold/ramp で明度ブースト
     let i = 0;
     for (let y = 0; y < SIM_H; y++){
       for (let x = 0; x < SIM_W; x++, i++){
-        const vv = v[i];
-        // sqrt gamma で低 V を持ち上げ、halo 域を可視化する
-        // （v=0.1 の cell が R≈30→61、v=0.3 が R≈80→104。max は v>=0.5 で
-        //  クランプなので letter cell は変わらず）
-        const raw = Math.max(0, Math.min(1, vv * 2.0));
-        const t = Math.sqrt(raw);
-        const t2 = raw; // = t*t なので実質同じだが、raw のほうが計算安い
+        const t = Math.max(0, Math.min(1, v[i] * 2.0));
+        const t2 = t * t;
         let r = 8  + t * 110 + t2 * 18;
         let g = 12 + t * 198 + t2 * 30;
         let b = 16 + t * 168 + t2 * 50;
         const tk = TRACK_BY_X[x];
         if (tk >= 0 && HL[tk] > 0 && targetV[i] > 0.4){
-          const f = 1 + HL[tk] * 0.8; // 最大 1.8× ブースト → hl=1 で letter は ~(245, 255, 255) の白へ
-          r *= f; g *= f; b *= f;
-          if (r > 255) r = 255;
-          if (g > 255) g = 255;
-          if (b > 255) b = 255;
-        } else if (targetV[i] <= 0.4 && vv > 0.03){
-          // halo cell: V に応じてブーストして視認性を上げる（letter より控えめに）
-          const glow = Math.min(1, vv * 3.5);       // v=0.03 → 0, v=0.29+ → 1
-          const f = 1 + glow * 0.5;                 // 最大 1.5× ブースト
+          const f = 1 + HL[tk] * 0.6; // 最大 1.6× ブースト
           r *= f; g *= f; b *= f;
           if (r > 255) r = 255;
           if (g > 255) g = 255;
@@ -1006,18 +943,8 @@
       // 各トラックを進めて、reform は per-cell snap、それ以外は lock を適用
       for (const t of TRACKS){
         advanceTrack(t, dts);
-        if (t.phase === 'reform'){
-          // attraction を cubic ease-out で立ち上げる（0 → 0.08 だが前半で
-          // 一気に強くなり後半は plateau）。V の gathering が reform 前半で
-          // ほぼ完了する形になり、reform 末に V 収束と HL 上昇が重なって
-          // 生じる flash 感を軽減する。
-          const p = Math.min(1, t.phaseElapsed / REFORM_S);
-          const easeOut = 1 - (1 - p) * (1 - p) * (1 - p);
-          letterAttraction(t, easeOut * 0.08);
-          applyReformSnap(t);
-        } else {
-          applyTrackLock(t, lockStrength(t));
-        }
+        if (t.phase === 'reform') applyReformSnap(t);
+        else applyTrackLock(t, lockStrength(t));
       }
     }
     render();
