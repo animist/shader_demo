@@ -879,7 +879,7 @@
   function step(){
     // Karl Sims 9点ラプラシアン: 0.2*隣4 + 0.05*斜4 - 1.0*中心 （値域 [-1,+1] で安定）
     // 既存 demos/reaction-diffusion.html (GLSL) と同じ離散化
-    const DU = 1.0, DV = 0.6;
+    const DU = 1.0, DV = 0.85;
     const f = cur.f, k = cur.k;
     const W = SIM_W;
     for (let y = 1; y < SIM_H - 1; y++){
@@ -947,6 +947,14 @@
         const tk = TRACK_BY_X[x];
         if (tk >= 0 && HL[tk] > 0 && targetV[i] > 0.4){
           const f = 1 + HL[tk] * 0.8; // 最大 1.8× ブースト → hl=1 で letter は ~(245, 255, 255) の白へ
+          r *= f; g *= f; b *= f;
+          if (r > 255) r = 255;
+          if (g > 255) g = 255;
+          if (b > 255) b = 255;
+        } else if (targetV[i] <= 0.4 && vv > 0.03){
+          // halo cell: V に応じてブーストして視認性を上げる（letter より控えめに）
+          const glow = Math.min(1, vv * 3.5);       // v=0.03 → 0, v=0.29+ → 1
+          const f = 1 + glow * 0.5;                 // 最大 1.5× ブースト
           r *= f; g *= f; b *= f;
           if (r > 255) r = 255;
           if (g > 255) g = 255;
