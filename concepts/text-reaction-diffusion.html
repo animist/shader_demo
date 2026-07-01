@@ -358,7 +358,7 @@
       各トラックは独立な 28 秒サイクル（HOLD 4 / RAMP 10 / DISSOLVE 12 / REFORM 2、stagger = 7s。速度スライダーで wall-clock 上の長さを 0.5×〜16× 調整）。
       <code>HOLD+RAMP = 14 = 2×stagger</code> なので、常に 2 トラックが hold か ramp（=可読）、残り 2 トラックが拡散か再集結のオーバーラップ構成。
       <code>sim</code> は常時全速力で回し、位相は
-      <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0</code>）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
+      <em>hold</em>=lock 1.0（背景セルは <code>×BG_LOCK_MUL=0.05</code> で緩く 0 方向へ引く → halo の拡散を遅くする）/ <em>ramp</em>=lock 1−p³ / <em>dissolve</em>=lock 0 / <em>reform</em>=<em>per-cell snap</em> で表現する。
     </p>
     <ol class="phases">
       <li>
@@ -582,10 +582,13 @@
   const REFORM_S = 2;            // 次の行へ再集結
   const CYCLE_S = HOLD_S + RAMP_S + DISSOLVE_S + REFORM_S; // 28s
   const FULL_STEPS_PER_SEC = 180;
-  const BG_LOCK_MUL = 0;         // hold/ramp の lock：背景セルにはこの倍率を掛ける（0 = 全く lock しない）
-                                 // 文字セルは 1.0 のまま anchor。0 にすると背景が完全に
-                                 // sim 任せになり、隣レーンで進んでいる拡散が背景を経由
-                                 // して canvas 全体へ自由に流れ込む（レーン境界の縦線が消える）。
+  const BG_LOCK_MUL = 0.05;      // hold/ramp の lock：背景セルにはこの倍率を掛ける。
+                                 // 0 = 完全に sim 任せ（halo が速く広がる）
+                                 // >0 = 背景 V が緩く 0 方向へ引き戻され、halo の
+                                 //     広がりが遅くなる。文字セルは常に full lock
+                                 //     なので anchor には影響なし。dissolve は
+                                 //     lock=0 なので BG_LOCK*lock=0 でレーン跨ぎ拡散は
+                                 //     そのまま維持される。
 
   // ── 3 トラック並列（右→中→左、日本語縦書きの読み順） ──
   // 共有 u/v 上で動かし、トラックごとに x-range が違う。
