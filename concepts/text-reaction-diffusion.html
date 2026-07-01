@@ -935,7 +935,7 @@
         let b = 16 + t * 168 + t2 * 50;
         const tk = TRACK_BY_X[x];
         if (tk >= 0 && HL[tk] > 0 && targetV[i] > 0.4){
-          const f = 1 + HL[tk] * 0.6; // 最大 1.6× ブースト
+          const f = 1 + HL[tk] * 0.35; // 最大 1.35× ブースト（0.6 だと delta が大きすぎて flash に見える）
           r *= f; g *= f; b *= f;
           if (r > 255) r = 255;
           if (g > 255) g = 255;
