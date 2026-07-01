@@ -328,6 +328,7 @@
     </div>
     <div class="controls">
       <button class="btn" id="reset">最初から</button>
+      <button class="btn" id="prev">前の行へ</button>
       <button class="btn" id="next">次の行へ</button>
       <button class="btn" id="pause">一時停止</button>
       <select class="sel" id="preset">
@@ -349,7 +350,7 @@
     <em>静止 → 立ち上がり → 拡散 → 再集結</em> サイクルを <em>1/4 サイクルずつズラして</em> 回す。
     再集結は <em>セルごとに別タイミングで target に snap</em> させ、文字セルから先に粒として立ち上がる
     — クロスフェードではなく「<strong>粒が集まって字になる</strong>」見え方を狙う。
-    速度スライダーで読み進みのテンポを 0.5×〜4× で調整（既定 2×）、終端で先頭へループ。
+    速度スライダーで読み進みのテンポを 0.5×〜4× で調整（既定 2×）、全文を読み切ると停止（「最初から」で再生）。
   </p>
 
   <section>
@@ -393,7 +394,7 @@
         <time>↻</time>
         <div>
           <h3>4 トラック並列 / 1/4 サイクルズレ / global counter</h3>
-          <p>初期 hold を 0 / CYCLE/4 / 2·CYCLE/4 / 3·CYCLE/4 で延長して定常状態へ。reform を抜ける順に <em>nextGlobalLine</em> から行番号を払い出すので、読み順 0→1→2→3→… が保持される。最終行の reform 完了で先頭へループ。本文は青空文庫の旧字旧仮名版から起動時に fetch、約 410 行に分割。</p>
+          <p>初期 hold を 0 / CYCLE/4 / 2·CYCLE/4 / 3·CYCLE/4 で延長して定常状態へ。reform を抜ける順に <em>nextGlobalLine</em> から行番号を払い出すので、読み順 0→1→2→3→… が保持される。最終行まで払い出すとループせず、各トラックは再集結せずそのまま拡散して停止（<em>done</em>）。「最初から」で先頭から再生。本文は青空文庫の旧字旧仮名版から起動時に fetch、約 410 行に分割。</p>
         </div>
       </li>
     </ol>
@@ -794,11 +795,17 @@
     } else if (t.phase === 'dissolve'){
       if (t.phaseElapsed >= DISSOLVE_S){
         const len = TEXT_LINES.length;
-        t.lineIdx = len ? nextGlobalLine % len : 0;
-        nextGlobalLine++;
-        renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
-        initReformSnapMoments(t);
-        t.phase = 'reform'; t.phaseElapsed = 0;
+        if (nextGlobalLine >= len){
+          // 全文を出し切った → ループせず、このトラックは再集結しないまま
+          // そのまま拡散して終わる（done）。「最初から」で再スタート。
+          t.phase = 'done'; t.phaseElapsed = 0;
+        } else {
+          t.lineIdx = nextGlobalLine;
+          nextGlobalLine++;
+          renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
+          initReformSnapMoments(t);
+          t.phase = 'reform'; t.phaseElapsed = 0;
+        }
       }
     } else if (t.phase === 'reform'){
       if (t.phaseElapsed >= REFORM_S){
@@ -913,14 +920,19 @@
     if (t.phase === 'ramp')     return '▾';   // 解放中
     if (t.phase === 'dissolve') return '·';   // 拡散
     if (t.phase === 'reform')   return '▴';   // 集結
+    if (t.phase === 'done')     return '□';   // 出し切って拡散中
     return '?';
   }
   function updateTimer(){
     const mm = String(Math.floor(simElapsed / 60)).padStart(2, '0');
     const ss = String(Math.floor(simElapsed % 60)).padStart(2, '0');
+    const pauseTag = paused ? ' · 一時停止' : '';
+    if (TRACKS.every(t => t.phase === 'done')){
+      timerEl.textContent = `t = ${mm}:${ss}  ·  全文おわり（「最初から」で再生）${pauseTag}`;
+      return;
+    }
     // 右(R) / 中(M) / 左(L) の順で表示
     const sym = TRACKS.map(t => `${trackGlyph(t)}${t.lineIdx+1}`).join(' ');
-    const pauseTag = paused ? ' · 一時停止' : '';
     timerEl.textContent = `t = ${mm}:${ss}  ·  ${sym}${pauseTag}`;
   }
 
@@ -952,27 +964,33 @@
     raf = requestAnimationFrame(loop);
   }
 
-  // 「次の行へ」: 各トラックの lineIdx を +1 し、全トラックを同時に reform に
-  // 入れて次行へ進む。読み順（…→k→k+1→…）が保たれる。stagger は初期値に戻し、
-  // reform 終了後に元のオフセットで定常状態へ。
-  function jumpNextReform(){
+  // 「前の行へ / 次の行へ」: 4 トラックが映す窓 [min..max] を delta 行だけずらす。
+  // 全トラックを同時に reform に入れ直して読み順を保つ。ループはせず、窓が
+  // [0, len-1] を出ないよう delta をクランプ（終端／先頭で頭打ち）。
+  function jumpBy(delta){
     const len = TEXT_LINES.length;
     if (!len) return;
+    const minLine = TRACKS.reduce((m, t) => Math.min(m, t.lineIdx), Infinity);
+    const maxLine = TRACKS.reduce((m, t) => Math.max(m, t.lineIdx), -Infinity);
+    let d = delta;
+    if (minLine + d < 0)       d = -minLine;          // 先頭でクランプ
+    if (maxLine + d > len - 1) d = (len - 1) - maxLine; // 終端でクランプ
+    if (d === 0) return;
     for (let k = 0; k < TRACKS.length; k++){
       const t = TRACKS[k];
-      t.lineIdx = (t.lineIdx + 1) % len;
+      t.lineIdx = t.lineIdx + d;
       renderLineInRange(t.lineIdx, targetU, targetV, t.x0, t.x1);
       initReformSnapMoments(t);
       t.phase = 'reform'; t.phaseElapsed = 0;
       t.holdExt = k * (CYCLE_S / TRACKS.length);
     }
-    // 次に自然サイクルで割り当てる行 = 現在の最大 lineIdx + 1
-    const maxLine = TRACKS.reduce((m, t) => Math.max(m, t.lineIdx), 0);
-    nextGlobalLine = (maxLine + 1) % len;
+    // 次に自然サイクルで払い出す行 = 窓の最大 + 1（>= len なら次の dissolve で done）
+    nextGlobalLine = maxLine + d + 1;
   }
 
   document.getElementById('reset').addEventListener('click', () => { restartFromTop(); });
-  document.getElementById('next').addEventListener('click', () => { jumpNextReform(); });
+  document.getElementById('prev').addEventListener('click', () => { jumpBy(-1); });
+  document.getElementById('next').addEventListener('click', () => { jumpBy(1); });
   document.getElementById('pause').addEventListener('click', (e) => {
     paused = !paused;
     e.currentTarget.textContent = paused ? '再開' : '一時停止';
