@@ -935,8 +935,12 @@
     for (let y = 0; y < SIM_H; y++){
       for (let x = 0; x < SIM_W; x++, i++){
         const vv = v[i];
-        const t = Math.max(0, Math.min(1, vv * 2.0));
-        const t2 = t * t;
+        // sqrt gamma で低 V を持ち上げ、halo 域を可視化する
+        // （v=0.1 の cell が R≈30→61、v=0.3 が R≈80→104。max は v>=0.5 で
+        //  クランプなので letter cell は変わらず）
+        const raw = Math.max(0, Math.min(1, vv * 2.0));
+        const t = Math.sqrt(raw);
+        const t2 = raw; // = t*t なので実質同じだが、raw のほうが計算安い
         let r = 8  + t * 110 + t2 * 18;
         let g = 12 + t * 198 + t2 * 30;
         let b = 16 + t * 168 + t2 * 50;
