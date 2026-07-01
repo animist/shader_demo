@@ -599,17 +599,6 @@
     { x0: 0,   x1: 40,  phase: 'hold', phaseElapsed: 0, lineIdx: 3, holdExt: 21 }, // 左
   ];
   let nextGlobalLine = TRACKS.length; // 行 0,1,2,3 は初期表示済み → 次は 4
-  // x 座標 → トラック番号の lookup（render の highlight 用）
-  const TRACK_BY_X = (() => {
-    const arr = new Int8Array(SIM_W);
-    for (let x = 0; x < SIM_W; x++){
-      arr[x] = -1;
-      for (let k = 0; k < TRACKS.length; k++){
-        if (x >= TRACKS[k].x0 && x < TRACKS[k].x1){ arr[x] = k; break; }
-      }
-    }
-    return arr;
-  })();
 
   // ── 状態 ─────────────────────────────────────────────
   let simElapsed = 0;
@@ -731,13 +720,17 @@
     }
   }
   function applyReformSnap(t){
+    // 「snap moment を過ぎたら target に強く lerp」（旧: ハード set）。
+    // rate 0.3/frame で数フレームで到達 → V の急変を平滑化し、
+    // V ベース HL とあわせて per-cell のフラッシュを消す。
+    const rate = 0.3;
     for (let y = 0; y < SIM_H; y++){
       const row = y * SIM_W;
       for (let x = t.x0; x < t.x1; x++){
         const i = row + x;
         if (t.phaseElapsed >= snapMoment[i]){
-          u[i] = targetU[i];
-          v[i] = targetV[i];
+          u[i] = u[i] + (targetU[i] - u[i]) * rate;
+          v[i] = v[i] + (targetV[i] - v[i]) * rate;
         }
       }
     }
@@ -896,35 +889,30 @@
   const imgData = ctx.createImageData(SIM_W, SIM_H);
   const dataArr = imgData.data;
   function render(){
-    // 各トラックの highlight 強度（hold/ramp で文字セルをブースト）
-    const HL = [];
-    for (let k = 0; k < TRACKS.length; k++){
-      const t = TRACKS[k];
-      if (t.phase === 'hold') HL[k] = 1.0;
-      else if (t.phase === 'ramp'){
-        const p = Math.min(1, t.phaseElapsed / RAMP_S);
-        HL[k] = 1 - p * p * p; // 1 → 0 で cubic ease-in（hold から自然に暗くなる）
-      } else if (t.phase === 'reform'){
-        const p = Math.min(1, t.phaseElapsed / REFORM_S);
-        HL[k] = 1 - (1 - p) * (1 - p) * (1 - p); // 0 → 1 で cubic ease-out（reform 完了時に 1 になり hold に連続）
-      } else HL[k] = 0; // dissolve のみ 0
-    }
-    // Bioluminescent green-cyan on warm black、letter セル × hold/ramp で明度ブースト
+    // V ベース HL：セル毎に「V が letter target にどれだけ近いか」で
+    // ブーストを決める。位相の切り替わりでは HL がジャンプしないので
+    // reform → hold のフラッシュが原理的に発生しない。attraction+lerp snap
+    // で V がじわじわ target に近づく速度そのままに brightness も上がる。
     let i = 0;
     for (let y = 0; y < SIM_H; y++){
       for (let x = 0; x < SIM_W; x++, i++){
-        const t = Math.max(0, Math.min(1, v[i] * 2.0));
+        const vv = v[i];
+        const t = Math.max(0, Math.min(1, vv * 2.0));
         const t2 = t * t;
         let r = 8  + t * 110 + t2 * 18;
         let g = 12 + t * 198 + t2 * 30;
         let b = 16 + t * 168 + t2 * 50;
-        const tk = TRACK_BY_X[x];
-        if (tk >= 0 && HL[tk] > 0 && targetV[i] > 0.4){
-          const f = 1 + HL[tk] * 0.6; // 最大 1.6× ブースト
-          r *= f; g *= f; b *= f;
-          if (r > 255) r = 255;
-          if (g > 255) g = 255;
-          if (b > 255) b = 255;
+        // letter セル (targetV > 0.4) のみ、v/target 比でブースト
+        if (targetV[i] > 0.4){
+          let hl = vv / 0.9;
+          if (hl > 1) hl = 1;
+          if (hl > 0){
+            const f = 1 + hl * 0.6; // 最大 1.6× ブースト
+            r *= f; g *= f; b *= f;
+            if (r > 255) r = 255;
+            if (g > 255) g = 255;
+            if (b > 255) b = 255;
+          }
         }
         dataArr[i*4]     = r;
         dataArr[i*4 + 1] = g;
