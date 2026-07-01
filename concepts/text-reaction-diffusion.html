@@ -470,7 +470,10 @@
   // ── 本文：羅生門 全文（青空文庫 旧字旧仮名版を起動時に fetch） ────
   let TEXT_LINES = []; // loadAndSplit() で populate
   // ── 行分割：文字種・助詞・読点を見て自然な位置で切る ───────
-  const POST_PARTICLES = new Set(['は','が','を','に','へ','で','と','も','や','か','ね','よ','ぞ','し']);
+  // 助詞を 2 段階に分ける。単独かなを一律「助詞」とみなすと「なるよ|り」「ね|られ」
+  // のように語の途中で切れてしまうため、確実な格助詞と語中にも現れる曖昧なかなを区別する。
+  const CASE_PARTICLES = new Set(['は','が','を','に','へ']);            // ほぼ確実に語の切れ目
+  const SOFT_PARTICLES = new Set(['と','も','や','か','ね','よ','ぞ','し','で']); // 語中にも現れる（誤爆注意）
   const GERUND_TE = new Set(['て','で','た','だ']);
   const HEAD_FORBID_CHARS = '、。，．？！）」』〕〙〗｝〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮーゝゞヽヾ';
   const TAIL_FORBID_CHARS = '（［｛〔〘〖「『';
@@ -487,15 +490,43 @@
     if (prev === 'の' && (isKanji(next) || isKana(next))) return -Infinity; // 連体修飾の の は切らない
     // Latin 単語の内部（英数字同士の隣接）では切らない
     if (/[A-Za-z0-9]/.test(prev) && /[A-Za-z0-9]/.test(next)) return -Infinity;
+
+    // ── 強い区切り（句読点・ダッシュ・空白・括弧）──
     if (prev === '。' || prev === '！' || prev === '？') return 200;
     if (prev === '、') return 150;
     if (prev === '―' && next !== '―') return 140;             // ―― の直後は良い区切り
     if (prev === ' ' || next === ' ') return 120;             // 空白の前後は良い区切り
-    if ('」』〕）'.includes(prev)) return 100;
-    if (POST_PARTICLES.has(prev)) return isKanji(next) ? 70 : 40;
-    if (GERUND_TE.has(prev))      return isKanji(next) ? 55 : 30;
-    if (isKana(prev) && isKanji(next)) return 25;             // かな→漢字 = 語頭の合図
-    if (isKanji(prev) && isKana(next)) return 15;             // 漢字→かな = 助詞の合図
+    if ('」』〕）〉》｣'.includes(prev)) return 110;           // 閉じ括弧の直後で切る
+    if ('「『（〔〈《｢'.includes(next)) return 105;           // 開き括弧の直前で切る
+
+    const ph = isHiragana(prev), nh = isHiragana(next);
+    const pk = isKanji(prev),    nk = isKanji(next);
+    const pkt = isKatakana(prev), nkt = isKatakana(next);
+
+    // ── 助詞の後：次が漢字（＝新しい語の頭）なら良い区切り。次がひらがなだと
+    //    「なるよ|り」「ね|られ」のように語中で切れやすいので、曖昧な助詞は負にして避ける。
+    if (CASE_PARTICLES.has(prev)){
+      if (nk)  return 75;
+      if (nkt) return 50;
+      return 12;                    // は/が/を/に/へ はほぼ助詞なので弱く許容
+    }
+    if (SOFT_PARTICLES.has(prev)){
+      if (nk)  return 45;
+      if (nkt) return 30;
+      return -14;                   // と/も/か/ね/よ… + ひらがな = 語中の可能性大 → 避ける
+    }
+    if (GERUND_TE.has(prev)){
+      if (nk)  return 50;
+      return -8;
+    }
+
+    // ── 文字種の変わり目（語境界の目安）──
+    if (ph && nk)   return 40;      // ひらがな→漢字 = 新しい語の頭（良い）
+    if (pkt && !nkt) return 34;     // カタカナ語の終わり
+    if (!pkt && nkt) return 34;     // カタカナ語の始まり
+    if (pk && nh)   return 14;      // 漢字→ひらがな = 送り仮名で誤爆しうるので控えめ
+    if (pk && nk)   return 8;       // 漢字連続 = 熟語の途中かもしれず弱め
+    if (ph && nh)   return -16;     // ひらがな連続 = 語の途中で切れやすい → 強く避ける
     return 0;
   }
   // segCount 個に近い長さで分け、各セグメントは TARGET 以下で best break を選ぶ
