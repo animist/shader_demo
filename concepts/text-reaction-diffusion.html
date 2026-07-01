@@ -903,8 +903,11 @@
       if (t.phase === 'hold') HL[k] = 1.0;
       else if (t.phase === 'ramp'){
         const p = Math.min(1, t.phaseElapsed / RAMP_S);
-        HL[k] = 1 - p * p * p;
-      } else HL[k] = 0;
+        HL[k] = 1 - p * p * p; // 1 → 0 で cubic ease-in（hold から自然に暗くなる）
+      } else if (t.phase === 'reform'){
+        const p = Math.min(1, t.phaseElapsed / REFORM_S);
+        HL[k] = 1 - (1 - p) * (1 - p) * (1 - p); // 0 → 1 で cubic ease-out（reform 完了時に 1 になり hold に連続）
+      } else HL[k] = 0; // dissolve のみ 0
     }
     // Bioluminescent green-cyan on warm black、letter セル × hold/ramp で明度ブースト
     let i = 0;
