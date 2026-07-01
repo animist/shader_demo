@@ -743,6 +743,37 @@
     }
   }
 
+  // 「文字の引力」演出：reform 中、文字セル（targetV>0.4）が 4-neighbor から
+  // V 値を strength × 各値の割合で吸い込む。同時に隣接セルは減衰する。
+  // 結果として周囲の拡散パターンが文字位置へ流れ込む視覚効果になる。
+  // v2 は sim 用の scratch だが、step() 後は v のコピーになっているだけなので
+  // ここで一時バッファとして再利用してよい。
+  function letterAttraction(t, strength){
+    if (strength <= 0) return;
+    v2.set(v);
+    const yMax = SIM_H - 1;
+    const xMin = Math.max(1, t.x0);
+    const xMax = Math.min(SIM_W - 1, t.x1);
+    for (let y = 1; y < yMax; y++){
+      const row = y * SIM_W;
+      for (let x = xMin; x < xMax; x++){
+        const i = row + x;
+        if (targetV[i] > 0.4){
+          const vL = v[i-1], vR = v[i+1], vU = v[i-SIM_W], vD = v[i+SIM_W];
+          v2[i]        += (vL + vR + vU + vD) * strength;
+          v2[i-1]      -= vL * strength;
+          v2[i+1]      -= vR * strength;
+          v2[i-SIM_W]  -= vU * strength;
+          v2[i+SIM_W]  -= vD * strength;
+        }
+      }
+    }
+    for (let i = 0; i < SIM_W * SIM_H; i++){
+      const val = v2[i];
+      v[i] = val < 0 ? 0 : val > 1 ? 1 : val;
+    }
+  }
+
   // トラックの x-range セルを target に向けて lock で引き寄せる。
   // 文字セル（targetV > 0.4）はフル lock、背景セルは BG_LOCK_MUL だけ。
   // これで「文字はシャープに、背景は隣レーンからの拡散を受け入れる」状態を作る。
@@ -938,8 +969,14 @@
       // 各トラックを進めて、reform は per-cell snap、それ以外は lock を適用
       for (const t of TRACKS){
         advanceTrack(t, dts);
-        if (t.phase === 'reform') applyReformSnap(t);
-        else applyTrackLock(t, lockStrength(t));
+        if (t.phase === 'reform'){
+          // reform 進行度に比例して引力を強くする（0 → 0.08）
+          const p = Math.min(1, t.phaseElapsed / REFORM_S);
+          letterAttraction(t, p * 0.08);
+          applyReformSnap(t);
+        } else {
+          applyTrackLock(t, lockStrength(t));
+        }
       }
     }
     render();
