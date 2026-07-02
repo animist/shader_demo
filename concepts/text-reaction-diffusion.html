@@ -499,6 +499,11 @@
     if ('」』〕）〉》｣'.includes(prev)) return 110;           // 閉じ括弧の直後で切る
     if ('「『（〔〈《｢'.includes(next)) return 105;           // 開き括弧の直前で切る
 
+    // 束縛的な助詞で行を始めない：の/を/は/が/に/へ は前の語に付くので
+    //「眼|の前」「檢非違使の庁|の役人」のように行頭に来ると不自然 → 強く避ける。
+    if (next === 'の' || next === 'を') return -55;
+    if (next === 'は' || next === 'が' || next === 'に' || next === 'へ') return -30;
+
     const ph = isHiragana(prev), nh = isHiragana(next);
     const pk = isKanji(prev),    nk = isKanji(next);
     const pkt = isKatakana(prev), nkt = isKatakana(next);
@@ -538,7 +543,10 @@
     let start = 0;
     for (let n = 0; n < segCount - 1; n++){
       const idealEnd = start + idealLen;
-      const maxPos = Math.min(s.length - 1, start + TARGET);
+      // +1 まで許容：良い区切り（句読点・語頭の漢字）がちょうど 1 字外にある事が多く、
+      // ここを拾うと「なが|ら」「高|く」等の語中切りを避けられる。最大行長は 18 字で
+      // 1 列に収まる（列あふれしない）ことを確認済み。
+      const maxPos = Math.min(s.length - 1, start + TARGET + 1);
       const minPos = Math.max(start + 1, Math.floor(idealEnd - idealLen * 0.4));
       let bestPos = Math.min(maxPos, Math.round(idealEnd));
       let bestScore = -Infinity;
