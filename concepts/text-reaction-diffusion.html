@@ -331,6 +331,10 @@
       <button class="btn" id="prev">前の行へ</button>
       <button class="btn" id="next">次の行へ</button>
       <button class="btn" id="pause">一時停止</button>
+      <select class="sel" id="text" aria-label="作品を選ぶ">
+        <option value="rashomon" selected>作品: 羅生門</option>
+        <option value="shuju">作品: 侏儒の言葉</option>
+      </select>
       <select class="sel" id="preset">
         <option value="mitosis">増殖 mitosis</option>
         <option value="coral" selected>珊瑚 coral</option>
@@ -346,7 +350,7 @@
   </section>
 
   <p class="lede">
-    「羅生門」<em>全文</em>を <em>4 本のトラック</em>（右・右中・左中・左、各 40px 幅）に並べ、各トラックが独立した
+    「羅生門」<em>全文</em>（コントロールで「侏儒の言葉」にも切替可）を <em>4 本のトラック</em>（右・右中・左中・左、各 40px 幅）に並べ、各トラックが独立した
     <em>静止 → 立ち上がり → 拡散 → 再集結</em> サイクルを <em>1/4 サイクルずつズラして</em> 回す。
     再集結は <em>セルごとに別タイミングで target に snap</em> させ、文字セルから先に粒として立ち上がる
     — クロスフェードではなく「<strong>粒が集まって字になる</strong>」見え方を狙う。
@@ -404,10 +408,10 @@
     <h2>素材</h2>
     <blockquote>
       或日の暮方の事である。一人の下人が、羅生門の下で雨やみを待つてゐた。
-      <cite>芥川龍之介「羅生門」 (1915) · 青空文庫 No.879 · 旧字旧仮名</cite>
+      <cite>芥川龍之介「羅生門」 (1915) / 「侏儒の言葉」 (1923–27) · 青空文庫 No.879 · 旧字旧仮名 · コントロールで切替</cite>
     </blockquote>
     <p class="source-note">
-      青空文庫の HTML は Shift_JIS、CORS も不可。<code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">curl | iconv -f SHIFT_JIS -t UTF-8</code> で取り、Python で <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">&lt;ruby&gt;</code> と <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">［＃…］</code> 等を剥がし <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">concepts/texts/rashomon.txt</code> として repo に同梱（パブリックドメイン）。起動時に fetch、句点で文単位 → 長文は読点で更に分割し、目標 18 字以下の読み取り単位に整形（実測 約 410 行・平均 14 字）。
+      青空文庫の HTML は Shift_JIS、CORS も不可。<code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">curl | iconv -f SHIFT_JIS -t UTF-8</code> で取り、Python で <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">&lt;ruby&gt;</code> と <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">［＃…］</code> 等を剥がし <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">concepts/texts/rashomon.txt</code> として repo に同梱（パブリックドメイン）。同じ処理で「侏儒の言葉」も <code style="font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--surf-2);padding:1px 6px;border-radius:2px">concepts/texts/shuju.txt</code> に同梱し、コントロールの作品セレクタで切替可能（同一の分割ロジックが両作品に通用）。起動時に fetch、句点で文単位 → 長文は読点で更に分割し、目標 18 字以下の読み取り単位に整形（羅生門 約 410 行・侏儒の言葉 約 2500 行）。
     </p>
   </section>
 
@@ -469,6 +473,13 @@
 
   // ── 本文：羅生門 全文（青空文庫 旧字旧仮名版を起動時に fetch） ────
   let TEXT_LINES = []; // loadAndSplit() で populate
+  // 切り替え可能な作品（青空文庫パブリックドメイン、旧字旧仮名版を同梱）
+  const TEXTS = {
+    rashomon: { file: 'texts/rashomon.txt', title: '羅生門' },
+    shuju:    { file: 'texts/shuju.txt',    title: '侏儒の言葉' },
+  };
+  let curText = 'rashomon';
+  let loadToken = 0; // 連続切替時に古い fetch 結果で上書きしないためのガード
   // ── 行分割：文字種・助詞・読点を見て自然な位置で切る ───────
   // 助詞を 2 段階に分ける。単独かなを一律「助詞」とみなすと「なるよ|り」「ね|られ」
   // のように語の途中で切れてしまうため、確実な格助詞と語中にも現れる曖昧なかなを区別する。
@@ -602,9 +613,9 @@
     }
     return out; // 空行（段落区切り）はそのまま残す
   }
-  async function loadAndSplit(){
-    const resp = await fetch('texts/rashomon.txt');
-    if (!resp.ok) throw new Error('texts/rashomon.txt が取得できません');
+  async function loadAndSplit(file){
+    const resp = await fetch(file);
+    if (!resp.ok) throw new Error(file + ' が取得できません');
     const text = await resp.text();
     const paras = text.split('\n').map(p => p.trim()).filter(Boolean);
     const lines = [];
@@ -1037,6 +1048,23 @@
   document.getElementById('preset').addEventListener('change', (e) => {
     cur = presets[e.target.value];
   });
+  // 作品切り替え：本文を差し替えて先頭から再生。連続切替に備え loadToken でガード。
+  async function switchText(key){
+    if (!TEXTS[key] || key === curText) return;
+    const my = ++loadToken;
+    curText = key;
+    timerEl.textContent = TEXTS[key].title + ' を取得中…';
+    try {
+      await loadAndSplit(TEXTS[key].file);
+    } catch (e) {
+      console.error(e);
+      timerEl.textContent = '読込失敗: ' + (e.message || e);
+      return;
+    }
+    if (my !== loadToken) return;   // より新しい切替が来ていたら破棄
+    restartFromTop();
+  }
+  document.getElementById('text').addEventListener('change', (e) => { switchText(e.target.value); });
   const speedEl = document.getElementById('speed');
   const speedValEl = document.getElementById('speedval');
   function syncSpeedLabel(){ speedValEl.textContent = speedMul.toFixed(1) + '×'; }
@@ -1052,7 +1080,7 @@
     timerEl.textContent = '本文取得中…';
     try {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      await loadAndSplit();
+      await loadAndSplit(TEXTS[curText].file);
     } catch (e) {
       console.error(e);
       timerEl.textContent = '読込失敗: ' + (e.message || e);
